@@ -156,7 +156,8 @@ Secure-Vibe/
 ├── core/
 │   ├── context_builder.py     # ① 安全上下文构建器
 │   ├── llm_backend.py         # ② LLM 可插拔后端（session=Agent 自身模型）
-│   ├── validator.py           # ③ AST+正则实时校验器
+│   ├── validator.py           # ③ 三引擎实时校验器（AST 危险调用 + 正则黑名单 + 污点追踪）
+│   ├── taint.py               # ③a 轻量污点追踪（输入源→传播→危险 sink 确认）
 │   ├── ast_fixer.py           # ④a AST 确定性修复引擎（零 LLM，安全等价改写）
 │   ├── repair_loop.py         # ④b 混合修复循环
 │   └── logger.py              # ⑤ JSONL 日志
@@ -174,7 +175,9 @@ Secure-Vibe/
 ├── tools/
 │   ├── mine_cwe_rules.py      # 从 GHSA-CySec 等数据集挖掘 CWE→修复映射
 │   ├── run_evaluation.py      # 专业级评测（SecurityEval，可选）
-│   └── agent_e2e_check.py     # Agent 工具链端到端自检
+│   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
+│   ├── server_smoke.py        # HTTP 服务冒烟测试
+│   └── llm_e2e.py             # 真实 LLM 端到端（需 API key / Ollama）
 ├── tests/                     # 70 个用例（恶意检出 + 安全零误报 + 循环行为）
 ├── docs/
 │   ├── log_format.md          # 日志格式规范
@@ -238,10 +241,11 @@ TASK_TEMPLATE_HINTS.append(("加密|encrypt|aes", "my_template"))
 
 ```bash
 pip install pytest
-python -m pytest tests/ -q          # 单元 + 集成（含 AST 确定性修复）
+python -m pytest tests/ -q          # 单元 + 集成（89 用例：校验/修复/污点/日志/AST 修复）
 python cli.py selftest              # Agent 工具链自检
-python tools/agent_e2e_check.py     # Agent 工具链端到端
+python tools/agent_e2e_check.py     # Agent 工具链端到端（不联网）
 python tools/server_smoke.py        # HTTP 服务冒烟测试（需 fastapi+uvicorn）
+python tools/llm_e2e.py             # 真实 LLM e2e（需 OPENAI_API_KEY 或本地 Ollama）
 ```
 
 ## 确定性修复（零 LLM 的安全等价改写）
@@ -280,3 +284,16 @@ pickle 反序列化）保留原样交给 LLM 或人工修复。
 | 调试接口 | Flask debug=True、Django DEBUG | PY-008/009 |
 | XSS | Markup/|safe | BL-003 |
 | 输入链 | input/request 直连危险函数 | PY-010 |
+
+## 污点追踪（语义层检测）
+
+在模式匹配之上，`core/taint.py` 做轻量数据流分析：从污点源（`input()`、`sys.argv`、
+`sys.stdin`、`request.*`、`socket.recv`）沿赋值/拼接/f-string/%/format 传播到危险 sink
+（`os.system`、`eval`、`subprocess(shell=True)`、`pickle.loads`、`yaml.load`）。
+
+- 捕获**变量间接传递**的注入：`cmd = input(); os.system(cmd)`（普通模式也能报 `os.system`，
+  但污点版带完整链条 `input() -> cmd -> os.system`，供 LLM 精确修复）
+- 输出 `checker=taint` 的违规，同 (rule_id, line) 的浅层命中自动让位
+- 建模为 sound over-approximation：**不建模净化函数**（`sanitize()` 后仍算污点），
+  偏保守，误报方向为“多报而非漏报”
+- `config.yaml → validator.taint_analysis: false` 可关闭
