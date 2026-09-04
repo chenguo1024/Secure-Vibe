@@ -24,7 +24,7 @@ except ImportError as exc:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-from core.taint import SINK_FIX_HINTS, SINK_MESSAGES, find_tainted_sinks  # noqa: E402
+from core.taint import SINK_FIX_HINTS, SINK_MESSAGES, TAINT_CWE, find_tainted_sinks  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +345,7 @@ class Validator:
                         + f"；污点链条: {f['chain']}",
                 severity="high",
                 fix_hint=SINK_FIX_HINTS.get(f["rule_id"], ""),
-                cwe="",
+                cwe=TAINT_CWE.get(f["rule_id"], ""),
                 checker="taint",
             ))
 

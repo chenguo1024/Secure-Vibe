@@ -78,3 +78,11 @@ def test_sys_stdin_source():
     code = "import sys\nimport os\ndata = sys.stdin.read()\nos.system(data)"
     r, _, _ = rules_and_checkers(code)
     assert any(v.checker == "taint" and v.rule_id == "PY-002" for v in r.violations)
+
+
+def test_taint_findings_carry_cwe():
+    # 污点 finding 应带 CWE 编号（回归：曾为空字符串）
+    code = "import os\nname = input()\nos.system(name)"
+    r, _, _ = rules_and_checkers(code)
+    taint_v = [v for v in r.violations if v.checker == "taint"]
+    assert taint_v and taint_v[0].cwe == "CWE-78"

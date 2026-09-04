@@ -141,6 +141,10 @@ def cmd_validate(args) -> int:
             f"最多重试 3 次；3 次仍未通过时停止并在答复中标记[需人工修复]。"
         )
     print(json.dumps(out, ensure_ascii=False, indent=1))
+    # 语法错误 → exit 2（SKILL.md 约定：先修语法后重新校验，不进修复循环）；
+    # 避免"无法解析的代码"以 exit 0/passed 进入日志流程
+    if result.error:
+        return 2
     return 0 if result.passed else 1
 
 

@@ -26,3 +26,38 @@ def test_generate_without_backend_does_not_crash():
 def test_validate_safe_code_passes():
     result = main.validate_code("import secrets\ntoken = secrets.token_urlsafe(32)")
     assert result.passed
+
+
+def test_cli_validate_exit_codes():
+    """SKILL.md 约定的 exit code 契约：0=通过 1=违规 2=错误/语法错误。"""
+    import json
+    import subprocess
+    py = sys.executable
+    root = Path(__file__).resolve().parent.parent
+    cli = root / "cli.py"
+
+    def run(*argv):
+        p = subprocess.run([py, str(cli), *argv], capture_output=True,
+                           text=True, encoding="utf-8", cwd=str(root), timeout=30)
+        return p.returncode, p.stdout
+
+    # exit 0: 安全代码
+    rc, _ = run("validate", "--code", "import secrets\ntoken = secrets.token_urlsafe(32)")
+    assert rc == 0
+    # exit 1: 违规
+    rc, out = run("validate", "--code", "x = eval(input())")
+    assert rc == 1
+    assert json.loads(out)["violations"]
+    # exit 2: 文件不存在
+    rc, out = run("validate", "--file", "Z:/no/such/file.py")
+    assert rc == 2 and "file not found" in out
+    # exit 2: 纯语法错误（回归：曾返回 0/passed，导致未解析代码被记为通过）
+    bad = root / ".tmp_syntax_bad.py"
+    bad.write_text("def broken(:", encoding="utf-8")
+    try:
+        rc, out = run("validate", "--file", str(bad))
+        assert rc == 2
+        data = json.loads(out)
+        assert data["syntax_error"] and not data["violations"]
+    finally:
+        bad.unlink(missing_ok=True)

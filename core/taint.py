@@ -241,6 +241,14 @@ SINK_FIX_HINTS = {
     "PY-005": "改用 yaml.safe_load（或 yaml.load(..., Loader=yaml.SafeLoader)）",
 }
 
+TAINT_CWE = {
+    "PY-001": "CWE-95",
+    "PY-002": "CWE-78",
+    "PY-003": "CWE-78",
+    "PY-004": "CWE-502",
+    "PY-005": "CWE-502",
+}
+
 
 def find_tainted_sinks(code: str) -> list[dict[str, Any]]:
     """分析代码，返回确认污点的 sink 列表。"""
