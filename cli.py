@@ -47,13 +47,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 SKILL_VERSION = "1.0.0"   # 与 VERSION 文件同步；发布新版本时递增
 
 
-def _read_version_file() -> str:
-    vf = PROJECT_ROOT / "VERSION"
-    if vf.is_file():
-        return vf.read_text(encoding="utf-8").strip()
-    return SKILL_VERSION
-
-
 def _load_config() -> dict:
     p = PROJECT_ROOT / "config.yaml"
     if p.is_file():
@@ -240,7 +233,7 @@ def cmd_cwe(args) -> int:
 
 def _installed_version() -> str:
     vf = PROJECT_ROOT / "VERSION"
-    return vf.read_text(encoding="utf-8").strip() if vf.is_file() else "unknown"
+    return vf.read_text(encoding="utf-8").strip() if vf.is_file() else SKILL_VERSION
 
 
 def cmd_version(args) -> int:

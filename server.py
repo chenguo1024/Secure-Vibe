@@ -37,6 +37,7 @@ class GenerateRequest(BaseModel):
     language: str = "python"
     framework: str = ""
     context: str = ""
+    backend: str = ""  # 覆盖 config.yaml 的 llm.backend（如 openai/claude/mock）
 
 
 class ValidateRequest(BaseModel):
@@ -58,6 +59,11 @@ def health() -> dict[str, str]:
 @app.post("/generate")
 def generate(req: GenerateRequest) -> dict[str, Any]:
     """生成安全代码。校验不通过时自动进入修复循环。"""
+    import os
+    old = None
+    if req.backend:
+        old = os.environ.get("SECURE_VIBE_LLM_BACKEND")
+        os.environ["SECURE_VIBE_LLM_BACKEND"] = req.backend
     try:
         outcome = generate_secure_code(
             task_description=req.task,
@@ -70,6 +76,12 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # LLM 后端异常等
         raise HTTPException(status_code=502, detail=f"generation failed: {exc}") from exc
+    finally:
+        if req.backend:
+            if old is None:
+                os.environ.pop("SECURE_VIBE_LLM_BACKEND", None)
+            else:
+                os.environ["SECURE_VIBE_LLM_BACKEND"] = old
 
     return {
         "passed": outcome.passed,

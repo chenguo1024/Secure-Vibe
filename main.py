@@ -81,7 +81,14 @@ def generate_secure_code(
         base_url=(cfg.get("llm", {}) or {}).get("base_url", ""),
     )
     repair_cfg = cfg.get("repair", {}) or {}
-    backend = backend or create_backend(llm_cfg, session_fn=session_fn)
+    if backend is None:
+        # session 后端必须注入 session_fn；未注入时优雅降级为 mock（开箱可用，
+        # 这是 Agent 通过 cli.py 走的路径，不经过此入口）
+        if llm_cfg.backend == "session" and session_fn is None:
+            llm_cfg.backend = "mock"
+            print("[Secure-Vibe] 提示: 未注入 session_fn，session 后端降级为 mock（可用 SECURE_VIBE_LLM_BACKEND 覆盖）",
+                  file=sys.stderr)
+        backend = create_backend(llm_cfg, session_fn=session_fn)
 
     if logger is None:
         log_cfg = cfg.get("logging", {}) or {}

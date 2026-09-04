@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import difflib
 import json
-import os
 import re
 from datetime import datetime
 from pathlib import Path

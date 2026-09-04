@@ -102,8 +102,11 @@ def test_session_llm_passthrough():
 
 
 def test_create_backend_factory():
+    from core.llm_backend import LLMConfig
     assert isinstance(create_backend(), MockBackend)
     assert isinstance(create_backend(None), MockBackend)
+    # config 里 backend=mock 也应正常返回 MockBackend（回归：曾因传 LLMConfig 给 MockBackend 崩溃）
+    assert isinstance(create_backend(LLMConfig(backend="mock")), MockBackend)
     import pytest
     with pytest.raises(ValueError):
         create_backend(type("C", (), {"backend": "session"}))  # session 无注入应报错

@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -96,7 +97,6 @@ def _few_shot(language: str, task_description: str,
     for pattern, tpl in TASK_TEMPLATE_HINTS:
         if len(wanted) >= max_templates:
             break
-        import re
         if re.search(pattern, task_description, re.IGNORECASE) and tpl not in wanted:
             wanted.append(tpl)
     if not wanted:

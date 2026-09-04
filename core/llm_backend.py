@@ -16,7 +16,7 @@ standalone 模式（独立脚本运行时）:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Optional, Protocol
 
 
@@ -175,11 +175,9 @@ def login(username, password):
 
 
 _BACKENDS = {
-    "session": SessionLLM,
     "openai": OpenAIBackend,
     "claude": ClaudeBackend,
     "ollama": OllamaBackend,
-    "mock": MockBackend,
 }
 
 
@@ -197,6 +195,8 @@ def create_backend(cfg: Optional[LLMConfig] = None,
         if session_fn is None:
             raise ValueError("backend=session 时必须通过 session_fn 注入当前 LLM 的生成函数")
         return SessionLLM(session_fn)
+    if name == "mock":
+        return MockBackend()  # Mock 不接受 LLMConfig，直接返回默认实例
     cls = _BACKENDS.get(name)
     if cls is None:
         raise ValueError(f"未知后端: {name}，可选: {list(_BACKENDS)}")

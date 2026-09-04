@@ -1,4 +1,4 @@
-"""validator.py — 实时安全校验器（AST + 正则双引擎）.
+"""validator.py — 实时安全校验器（三引擎：AST 危险调用 + 正则黑名单 + 污点追踪）.
 
 输入：代码字符串 + 语言类型
 输出：ValidationResult（通过/不通过 + 结构化违规列表）
@@ -6,6 +6,7 @@
 设计目标：毫秒级（<50ms/次），不依赖 Semgrep 等重型工具。
 规则来源：rules/*.yaml（通用规则）+ blacklist/*.yaml（语言黑名单），
 规则文件增删改无需改动本模块代码。
+污点引擎：core/taint.py（仅 Python，确认用户输入直达危险 sink）。
 """
 from __future__ import annotations
 

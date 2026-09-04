@@ -71,3 +71,10 @@ def test_taint_dedupes_shallow_match():
     py002 = [v for v in r.violations if v.rule_id == "PY-002"]
     assert len(py002) == 1
     assert py002[0].checker == "taint"
+
+
+def test_sys_stdin_source():
+    # sys.stdin.read() 也是污点源（回归：曾漏检）
+    code = "import sys\nimport os\ndata = sys.stdin.read()\nos.system(data)"
+    r, _, _ = rules_and_checkers(code)
+    assert any(v.checker == "taint" and v.rule_id == "PY-002" for v in r.violations)

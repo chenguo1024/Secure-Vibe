@@ -110,7 +110,7 @@ result = validate_code(code_string)     # 仅校验
 ② 生成 ───────────── Agent 自身 LLM（session 模式，推荐）/ OpenAI / Claude / Ollama / Mock
      │
      ▼
-③ Validator  ──────── AST + 正则双引擎，毫秒级（<50ms），不依赖 Semgrep
+③ Validator  ──────── 三引擎：AST 危险调用 + 正则黑名单 + 污点追踪，毫秒级（不依赖 Semgrep）
      │
      ├─ 通过 ──► 交付代码 + JSONL 日志
      ▼ 不通过
@@ -179,7 +179,7 @@ Secure-Vibe/
 │   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
 │   ├── server_smoke.py        # HTTP 服务冒烟测试
 │   └── llm_e2e.py             # 真实 LLM 端到端（--backend mock 离线自检）
-├── tests/                     # 70 个用例（恶意检出 + 安全零误报 + 循环行为）
+├── tests/                     # 92 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复）
 ├── docs/
 │   ├── log_format.md          # 日志格式规范
 │   └── evaluation.md          # 专业级评测指南
@@ -242,7 +242,7 @@ TASK_TEMPLATE_HINTS.append(("加密|encrypt|aes", "my_template"))
 
 ```bash
 pip install pytest
-python -m pytest tests/ -q          # 单元 + 集成（89 用例：校验/修复/污点/日志/AST 修复）
+python -m pytest tests/ -q          # 单元 + 集成（92 用例：校验/修复/污点/日志/AST 修复）
 python cli.py selftest              # Agent 工具链自检
 python tools/agent_e2e_check.py     # Agent 工具链端到端（不联网）
 python tools/server_smoke.py        # HTTP 服务冒烟测试（需 fastapi+uvicorn）

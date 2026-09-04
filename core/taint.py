@@ -42,17 +42,21 @@ def _is_source(node: ast.expr) -> Optional[str]:
         name = _func_name(node.func)
         if name in ("input", "raw_input"):
             return f"{name}()"
-    # sys.argv / sys.stdin
+        # sys.stdin.read() / sys.stdin.readline() / sys.stdin.readlines()
+        if name in ("sys.stdin.read", "sys.stdin.readline", "sys.stdin.readlines",
+                    "sys.stdin.buffer.read", "sys.stdin.buffer.readline"):
+            return name
+    # sys.argv / sys.stdin 下标访问
     if isinstance(node, ast.Subscript):
         base = node.value
         if (isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name)
                 and base.value.id == "sys" and base.attr in ("argv", "stdin")):
             return f"sys.{base.attr}[...]"
+    # 文件对象读（file.read() 其中 file 由 open() 得到——过近似，故仅显式 sys.stdin）
     # request.args / request.form / ...（web 框架）
     if isinstance(node, ast.Attribute):
         if isinstance(node.value, ast.Name) and node.value.id == "request":
             return f"request.{node.attr}"
-        # flask: request.args.get(...) 是 Call(Attribute(request.args, get))
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         f = node.func
         if (isinstance(f.value, ast.Attribute) and isinstance(f.value.value, ast.Name)
