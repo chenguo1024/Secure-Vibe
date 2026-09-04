@@ -1,0 +1,165 @@
+# rules/python.yaml — Python 特定安全规则（AST + 正则双引擎）
+# 匹配字段说明见 core/validator.py 的 Rule 类文档。
+# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+
+- id: PY-001
+  name: dangerous_eval_exec
+  severity: high
+  cwe: CWE-95
+  message: 使用 eval/exec 动态执行代码（代码注入风险）
+  fix_hint: 禁止 eval/exec 处理不可信输入。JSON 用 json.loads；表达式求值用 ast.literal_eval；动态逻辑用字典分发或显式 if/elif。
+  template: safe_eval_alt
+  match:
+    ast_calls:
+      - eval
+      - exec
+      - compile
+    regex:
+      - >-
+        (?<![\w.])eval\s*\(
+      - >-
+        (?<![\w.])exec\s*\(
+
+- id: PY-002
+  name: os_system_shell
+  severity: high
+  cwe: CWE-78
+  message: 使用 os.system / os.popen 执行系统命令（命令注入风险）
+  fix_hint: 改用 subprocess.run(args_list, shell=False)，参数用列表传递避免 shell 解析；禁止拼接命令字符串。
+  match:
+    ast_calls:
+      - os.system
+      - os.popen
+    regex:
+      - >-
+        (?<![\w.])os\.system\s*\(
+      - >-
+        (?<![\w.])os\.popen\s*\(
+
+- id: PY-003
+  name: subprocess_shell_true
+  severity: high
+  cwe: CWE-78
+  message: subprocess 调用启用了 shell=True（命令注入风险）
+  fix_hint: 使用 shell=False（默认），命令和参数以列表形式传递：subprocess.run(["ls", "-l"], shell=False)。若必须 shell=True，须对输入做白名单校验并注释说明。
+  match:
+    ast_kwargs:
+      subprocess.run: {shell: literal-true}
+      subprocess.call: {shell: literal-true}
+      subprocess.Popen: {shell: literal-true}
+      subprocess.check_output: {shell: literal-true}
+      subprocess.check_call: {shell: literal-true}
+    regex:
+      - >-
+        (?i)shell\s*=\s*True
+
+- id: PY-004
+  name: unsafe_pickle
+  severity: high
+  cwe: CWE-502
+  message: 使用 pickle 反序列化不可信数据（远程代码执行风险）
+  fix_hint: 对外部数据使用 JSON（json.loads）等安全格式；pickle 仅用于可信内部数据且需注释说明。绝对不要 pickle.loads 网络输入。
+  match:
+    ast_calls:
+      - pickle.loads
+      - pickle.load
+      - pickle.Unpickler
+      - yaml.unsafe_load
+      - dill.loads
+    regex:
+      - >-
+        (?<![\w.])pickle\.loads?\s*\(
+      - >-
+        (?<![\w.])yaml\.unsafe_load\s*\(
+    exclude_regex:
+      - >-
+        yaml\.load\s*\([^)]*Loader\s*=\s*yaml\.SafeLoader
+
+- id: PY-005
+  name: unsafe_yaml_load
+  severity: medium
+  cwe: CWE-502
+  message: 使用了不安全的 yaml.load（未指定 SafeLoader 或使用了 CLoader/FullLoader）
+  fix_hint: 使用 yaml.safe_load(data)，或 yaml.load(data, Loader=yaml.SafeLoader)。
+  match:
+    regex:
+      - >-
+        (?<![\w.])yaml\.load\s*\((?![^)]*Loader\s*=\s*yaml\.SafeLoader)[^)]*\)
+    exclude_regex:
+      - >-
+        SafeLoader|safe_load
+
+- id: PY-006
+  name: unsafe_tempfile
+  severity: medium
+  cwe: CWE-377
+  message: 使用可预测的临时文件路径（竞争/符号链接风险）
+  fix_hint: 使用 tempfile.NamedTemporaryFile / tempfile.mkstemp 创建临时文件，不要自己拼接 /tmp 路径。
+  match:
+    regex:
+      - >-
+        (?i)["'`](/tmp|C:\\Temp|C:\\Windows\\Temp)[\\/"']
+      - >-
+        (?i)open\s*\(\s*["'`]/tmp/
+    exclude_regex:
+      - >-
+        tempfile\.
+
+- id: PY-007
+  name: unsafe_deserialization_marshal
+  severity: medium
+  cwe: CWE-502
+  message: 使用 marshal 反序列化不可信数据
+  fix_hint: marshal 仅用于 Python 字节码缓存（.pyc），不要用于外部数据；ctypes 加载 DLL/SO 必须校验来源路径。
+  match:
+    ast_calls:
+      - marshal.loads
+      - marshal.load
+    regex:
+      - >-
+        (?<![\w.])marshal\.loads?\s*\(
+
+- id: PY-008
+  name: flask_debug_true
+  severity: medium
+  cwe: CWE-489
+  message: Flask/Werkzeug 生产环境开启 debug 模式（调试器可远程执行代码）
+  fix_hint: 生产环境必须 debug=False；用环境变量控制：app.run(debug=os.environ.get("FLASK_DEBUG") == "1")。
+  match:
+    ast_kwargs:
+      app.run: {debug: literal-true}
+      run_simple: {use_debugger: literal-true}
+    regex:
+      - >-
+        (?i)\.run\s*\([^)]*debug\s*=\s*True
+      - >-
+        (?i)use_debugger\s*=\s*True
+    exclude_regex:
+      - >-
+        os\.environ|getenv|FLASK_DEBUG
+
+- id: PY-009
+  name: django_insecure_settings
+  severity: medium
+  cwe: CWE-489
+  message: Django settings 配置存在不安全项（DEBUG=True / 允许所有主机）
+  fix_hint: 生产环境 DEBUG=False；ALLOWED_HOSTS 配置明确域名列表，禁止 ["*"]。
+  match:
+    regex:
+      - >-
+        (?i)^DEBUG\s*=\s*True
+      - >-
+        (?i)ALLOWED_HOSTS\s*=\s*\[\s*["']\*["']\s*\]
+    exclude_regex: []
+
+- id: PY-010
+  name: unsafe_input_eval_chain
+  severity: high
+  cwe: CWE-78
+  message: input()/request 参数直接进入危险函数调用链
+  fix_hint: 用户输入必须经过校验/白名单处理后再使用；不要把 input()/request.args 直接传给 eval/exec/os.system。
+  match:
+    regex:
+      - >-
+        (?i)(eval|exec|os\.system|os\.popen|subprocess\.\w+)\s*\(\s*(input\s*\(|request\.(args|form|data|json|values|GET|POST))
+    exclude_regex: []

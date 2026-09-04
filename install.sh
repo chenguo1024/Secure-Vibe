@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# install.sh — 把 Secure-Vibe 安装到用户的 Agent 技能目录（Linux/macOS）
+# 用法:
+#   ./install.sh                                    # 默认 opencode
+#   ./install.sh ~/.claude/skills/secure-vibe       # 指定目录
+set -euo pipefail
+
+TARGET="${1:-$HOME/.config/opencode/skill/secure-vibe}"
+SOURCE="$(cd "$(dirname "$0")" && pwd)"
+REPO="${2:-}"   # 传入则使用 git 克隆安装（此后 cli.py update / git pull 更新）
+
+if [ -n "$REPO" ]; then
+    if [ -d "$TARGET/.git" ]; then
+        echo "目标已是 git 管理安装，执行 git pull 更新:"
+        git -C "$TARGET" pull --ff-only
+        python "$TARGET/cli.py" selftest
+        exit $?
+    fi
+    rm -rf "$TARGET"
+    git clone "$REPO" "$TARGET"
+    echo "git 管理安装完成: $TARGET"
+    python "$TARGET/cli.py" selftest
+    echo ""
+    echo "此后更新: python $TARGET/cli.py update"
+    exit $?
+fi
+
+echo "Secure-Vibe 安装器"
+echo "  源:   $SOURCE"
+echo "  目标: $TARGET"
+
+mkdir -p "$TARGET"
+
+for item in SKILL.md cli.py main.py config.yaml requirements.txt README.md core rules blacklist templates docs; do
+    if [ -e "$SOURCE/$item" ]; then
+        rm -rf "$TARGET/$item"
+        cp -r "$SOURCE/$item" "$TARGET/$item"
+        echo "  + $item"
+    fi
+done
+
+echo ""
+echo "安装自检:"
+
+# 自动寻找带 pyyaml 的 Python
+PY_CMD=""
+for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import yaml" 2>/dev/null; then
+        PY_CMD="$candidate"
+        break
+    fi
+done
+
+if [ -n "$PY_CMD" ]; then
+    echo "  使用 Python: $PY_CMD"
+    if "$PY_CMD" "$TARGET/cli.py" selftest; then
+        echo ""
+        echo "安装完成。重启 Agent 后生效。技能名: secure-vibe"
+    else
+        echo "自检未通过，请检查 pyyaml: pip install pyyaml" >&2
+        exit 1
+    fi
+else
+    echo "未找到带 pyyaml 的 Python。请先: pip install pyyaml，然后手动运行:" >&2
+    echo "  python $TARGET/cli.py selftest" >&2
+    exit 1
+fi

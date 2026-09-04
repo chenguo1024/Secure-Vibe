@@ -1,0 +1,152 @@
+# rules/general.yaml — 跨语言通用安全规则（正则引擎）
+# 扩展方法：新增一条规则即新增一个列表项，无需改动代码。详见 README.md。
+# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+
+- id: GEN-001
+  name: hardcoded_secret
+  severity: high
+  cwe: CWE-798
+  message: 检测到硬编码密钥/密码/API Key
+  fix_hint: 不要在代码中硬编码密钥。改从环境变量读取（os.environ），或在部署时注入配置；同时轮换已泄露的密钥。
+  template: secure_config
+  match:
+    regex:
+      - >-
+        (?i)(api[_-]?key|apikey|secret|secret[_-]?key|password|passwd|pwd|access[_-]?token|auth[_-]?token|private[_-]?key)\s*[=:]\s*["'][^"']{6,}["']
+      - >-
+        (?i)(AKIA[0-9A-Z]{16})
+      - >-
+        (?i)(sk-[A-Za-z0-9_-]{20,})
+      - >-
+        -----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----
+      - >-
+        (?i)(ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,})
+      - >-
+        (?i)\b(?:mysql|postgres(?:ql)?|mongodb(?:\+srv)?)://[^/\s:]+:[^@\s/]+@
+    exclude_regex:
+      - >-
+        (?i)\{\{|\$\{|<[^>]+>|your[_-]?key|your[_-]?api|xxx+|placeholder|changeme|dummy|test[_-]?key|os\.environ|getenv
+
+- id: GEN-002
+  name: plaintext_http
+  severity: low
+  cwe: CWE-319
+  message: 使用明文 HTTP 链接，传输未加密
+  fix_hint: 改用 https://；确需 http（如本地调试）时请显式注释说明原因。
+  match:
+    regex:
+      - >-
+        ["'`]http://(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])
+    exclude_regex:
+      - >-
+        \b//\s.*http://
+
+- id: GEN-003
+  name: insecure_random
+  severity: medium
+  cwe: CWE-338
+  message: 使用不安全的随机数（random 模块）生成安全相关值
+  fix_hint: 安全用途（token、密码重置码、会话 ID、密钥）必须使用 secrets 模块：secrets.token_hex / secrets.token_urlsafe / secrets.choice。
+  template: secure_token
+  match:
+    ast_calls:
+      - random.random
+      - random.randint
+      - random.choice
+      - random.randrange
+      - random.uniform
+      - random.sample
+      - random.getrandbits
+  exclude_regex:
+    - >-
+      random\.seed\(.*random
+
+- id: GEN-004
+  name: weak_hash
+  severity: medium
+  cwe: CWE-327
+  message: 使用弱哈希算法（md5/sha1）
+  fix_hint: 密码存储用 bcrypt/argon2/scrypt；完整性校验用 hashlib.sha256 及以上。md5/sha1 仅可用于缓存键等非安全场景。
+  template: password_hash
+  match:
+    ast_calls:
+      - hashlib.md5
+      - hashlib.sha1
+    regex:
+      - >-
+        (?i)\b(MD5|SHA1)\s*\(
+
+- id: GEN-005
+  name: sql_string_concat
+  severity: high
+  cwe: CWE-89
+  message: 检测到 SQL 语句字符串拼接/格式化（SQL 注入风险）
+  fix_hint: 使用参数化查询：cursor.execute(sql, params)，或 ORM 的绑定参数；禁止 f-string/%/.format/+ 拼接 SQL。
+  template: db_query
+  match:
+    regex:
+      - >-
+        (?i)execute\s*\(\s*f["']
+      - >-
+        (?i)f["'`](\s*)(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\b
+      - >-
+        (?i)["'`](SELECT|INSERT|UPDATE|DELETE)\b[^"'`]*\+\s*\w+
+      - >-
+        (?i)execute\s*\([^)]*%\s*\w+
+      - >-
+        (?i)execute\s*\([^)]*\.format\s*\(
+      - >-
+        (?i)execute\s*\(\s*\w+\s*\+\s*\w+
+      - >-
+        (?i)(SELECT|INSERT|UPDATE|DELETE)\b[^"'`]*\{[^}]*\}
+      - >-
+        (?i)["'`](SELECT|INSERT|UPDATE|DELETE)\s.*["'`]\s*%
+    exclude_regex:
+      - >-
+        execute\s*\([^,)]*,\s*[\[\(]?\s*\w+\s*[\]\)]?\s*\)
+
+- id: GEN-006
+  name: sensitive_print
+  severity: low
+  cwe: CWE-532
+  message: 可能把密码/密钥/token 打印或写入日志
+  fix_hint: 不要将敏感凭据输出到日志/stdout；如需调试请输出掩码（如 sk-****）。
+  match:
+    regex:
+      - >-
+        (?i)print\s*\([^)]*(password|passwd|secret|api[_-]?key|token|credential)
+      - >-
+        (?i)logger?\.\w+\s*\([^)]*(password|passwd|secret|api[_-]?key|credential)
+    exclude_regex:
+      - >-
+        mask|\*{3,}|redact|len\(
+
+- id: GEN-007
+  name: jwt_no_verify
+  severity: high
+  cwe: CWE-347
+  message: JWT 解码未校验签名
+  fix_hint: 必须使用带密钥和算法校验的 jwt.decode(token, key, algorithms=[...])；禁止关闭签名校验的 options 配置。
+  match:
+    regex:
+      - >-
+        (?i)verify_signature["']?\s*:\s*False
+      - >-
+        (?i)jwt\.decode\s*\([^)]*verify\s*=\s*False
+    exclude_regex: []
+
+- id: GEN-008
+  name: tls_verification_disabled
+  severity: medium
+  cwe: CWE-295
+  message: 禁用了 TLS 证书校验
+  fix_hint: 保持 verify=True（默认）；自签名证书应加入信任库，而不是关闭校验。
+  match:
+    regex:
+      - >-
+        (?i)verify\s*=\s*False
+      - >-
+        (?i)ssl\._create_unverified_context\s*\(
+      - >-
+        (?i)check_hostname\s*=\s*False
+    exclude_regex: []

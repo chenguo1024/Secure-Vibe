@@ -1,0 +1,14 @@
+# Secure-Vibe 依赖（刻意保持轻量）
+pyyaml>=6.0
+
+# 可选：HTTP API 服务模式（不使用 server.py 可不装）
+fastapi>=0.110
+uvicorn>=0.29
+
+# 可选：LLM 后端（按需安装，使用哪个后端装哪个）
+# openai>=1.30
+# anthropic>=0.30
+# httpx>=0.27        # ollama 后端使用
+
+# 开发/测试
+# pytest>=8.0
