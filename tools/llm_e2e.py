@@ -42,6 +42,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Secure-Vibe 真实 LLM e2e")
     ap.add_argument("--backend", default="openai", choices=["openai", "claude", "ollama", "mock"])
     ap.add_argument("--task", default=TASK)
+    ap.add_argument("--model", default="", help="覆盖模型名（如国产兼容网关的 model id）")
+    ap.add_argument("--base-url", default="", help="覆盖 API 端点（如 https://api.xxx.cn/v1）")
     args = ap.parse_args()
 
     if args.backend == "mock":
@@ -87,11 +89,11 @@ def login(username, password):
     llm = cfg.get("llm", {}) or {}
     llm_cfg = LLMConfig(
         backend=args.backend,
-        model=llm.get("model", ""),
+        model=args.model or llm.get("model", ""),
         temperature=llm.get("temperature", 0.2),
         max_tokens=llm.get("max_tokens", 2048),
         timeout=llm.get("timeout", 60),
-        base_url=llm.get("base_url", ""),
+        base_url=args.base_url or llm.get("base_url", ""),
     )
 
     print(f"[llm_e2e] backend={args.backend} 连接真实模型...")

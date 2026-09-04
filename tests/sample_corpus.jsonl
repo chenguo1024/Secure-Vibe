@@ -1,0 +1,10 @@
+{"code": "import os\nos.system(cmd)", "insecure": true, "cwe": "CWE-78"}
+{"code": "cur.execute(f\"SELECT * FROM t WHERE id={x}\")", "insecure": true, "cwe": "CWE-89"}
+{"code": "API_KEY = \"sk-abcdef1234567890abcdef\"", "insecure": true, "cwe": "CWE-798"}
+{"code": "result = eval(user_input)", "insecure": true, "cwe": "CWE-95"}
+{"code": "import pickle\npickle.loads(data)", "insecure": true, "cwe": "CWE-502"}
+{"code": "import random\ntoken = random.randint(1, 9)", "insecure": true, "cwe": "CWE-338"}
+{"code": "import secrets\ntoken = secrets.token_urlsafe(32)", "insecure": false, "cwe": ""}
+{"code": "subprocess.run(['ls'], shell=False)", "insecure": false, "cwe": ""}
+{"code": "cur.execute(\"SELECT * FROM t WHERE id=?\", (x,))", "insecure": false, "cwe": ""}
+{"code": "api_key = os.environ.get('API_KEY')", "insecure": false, "cwe": ""}

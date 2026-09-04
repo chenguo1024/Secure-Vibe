@@ -50,9 +50,11 @@ def load_securityeval_samples(dataset_path: Path):
       - 目录: samples/*.json 同上
     """
     samples = []
-    for f in sorted(dataset_path.rglob("*")):
-        if f.suffix not in (".json", ".jsonl"):
-            continue
+    if dataset_path.is_file():
+        files = [dataset_path]
+    else:
+        files = [p for p in dataset_path.rglob("*") if p.suffix in (".json", ".jsonl", ".py")]
+    for f in sorted(files):
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -74,10 +76,19 @@ def load_securityeval_samples(dataset_path: Path):
                 continue
             insecure = item.get("insecure")
             if insecure is None:
-                # 从目录名/ID 推断（SecurityEval 样本均为 insecure prompt 生成）
                 insecure = True
             cwe = item.get("cwe") or ""
             samples.append({"code": code, "insecure": bool(insecure), "cwe": cwe, "source": str(f)})
+
+    # 兜底：目录里只有 .py 源码且无标注 → 全部视为"待检测"(insecure=True)做检出率统计
+    if not samples:
+        for f in sorted(dataset_path.rglob("*.py")):
+            try:
+                code = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if code.strip():
+                samples.append({"code": code, "insecure": True, "cwe": "", "source": str(f)})
     return samples
 
 
@@ -112,13 +123,14 @@ def evaluate(samples, language: str = "python") -> dict:
         "false_positive_rate": round(false_pos / safe_n, 4) if safe_n else None,
         "avg_latency_ms": round(total_ms / len(samples), 3) if samples else 0,
         "missed_by_cwe": dict(sorted(missed_cwe.items(), key=lambda kv: -kv[1])),
-    }
+    } 
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Secure-Vibe 专业级评测（SecurityEval）")
     ap.add_argument("--path", default="", help="SecurityEval 数据集路径（覆盖 config.yaml）")
     ap.add_argument("--local", action="store_true", help="使用内置用例集跑离线基准（无需外部数据集）")
+    ap.add_argument("--corpus", default="", help="通用标注语料：JSONL 每行 {code,insecure,cwe}，或目录递归扫描")
     args = ap.parse_args()
 
     if args.local:
@@ -132,13 +144,27 @@ def main() -> int:
         print(f"\n离线基准报告已写入: {out}")
         return 0
 
+    if args.corpus:
+        samples = load_securityeval_samples(Path(args.corpus))
+        if not samples:
+            print("未能从语料解析样本，格式要求见 docs/evaluation.md", file=sys.stderr)
+            return 2
+        result = evaluate(samples)
+        out = PROJECT_ROOT / "logs" / "evaluation_report.json"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(json.dumps(result, ensure_ascii=False, indent=1))
+        print(f"\n报告已写入: {out}")
+        return 0
+
     cfg = load_eval_config()
     path = args.path or cfg.get("securityeval_path", "")
     if not path or not Path(path).is_dir():
         print("未配置 SecurityEval 数据集路径。两步方案：\n"
               "  离线基线: python tools/run_evaluation.py --local\n"
+              "  通用语料: python tools/run_evaluation.py --corpus <jsonl或目录>\n"
               "  论文级评测:\n"
-              "    1. git clone https://github.com/s2labres/security-eval.git\n"
+              "    1. python tools/fetch_datasets.py --securityeval --dir D:/datasets\n"
               "    2. config.yaml: evaluation.securityeval_path: <路径>\n"
               "    3. 重新运行本脚本", file=sys.stderr)
         return 2

@@ -27,17 +27,30 @@ python tools/run_evaluation.py --local   # 等价，输出 evaluation_report.jso
 ### 步骤
 
 ```bash
-# 1. 下载数据集（国内需代理，或从镜像获取）
-git clone https://github.com/s2labres/security-eval.git D:\datasets\SecurityEval
+# 一键获取所有外部数据集（需要网络时运行）
+python tools/fetch_datasets.py --all --dir D:/datasets
+# 或单独获取 SecurityEval
+python tools/fetch_datasets.py --securityeval --dir D:/datasets
 
-# 2. 配置 config.yaml
+# 配置 config.yaml
 evaluation:
   enabled: true
   securityeval_path: "D:/datasets/SecurityEval"
 
-# 3. 运行评测
+# 运行评测
 python tools/run_evaluation.py
 ```
+
+### 通用标注语料（无 SecurityEval 时也可跑）
+
+`run_evaluation.py --corpus` 接受任意 JSONL（每行 `{code, insecure, cwe}`）或源码目录：
+
+```bash
+python tools/run_evaluation.py --corpus tests/sample_corpus.jsonl   # 内置示例
+python tools/run_evaluation.py --corpus D:/datasets/your_data.jsonl # 任意标注数据
+```
+
+指标口径与 SecurityEval 一致（detection_rate / false_positive_rate / avg_latency_ms / missed_by_cwe）。
 
 ### 指标说明
 
