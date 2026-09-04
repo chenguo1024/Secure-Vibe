@@ -54,3 +54,17 @@
       - >-
         (?i)pickle\.loads?\s*\([^)]*(request|socket|recv|input|urlopen|response)
     exclude_regex: []
+
+- id: BL-005
+  name: dynamic_builtin_access
+  severity: high
+  cwe: CWE-95
+  message: 通过 getattr/builtins 动态访问 eval/exec/open/compile 等危险内建（绕过静态检测）
+  fix_hint: 禁止动态取用危险内建函数；这是常见的静态检测绕过手段，改用安全 API（json.loads/ast.literal_eval）并移除该调用。
+  match:
+    regex:
+      - >-
+        (?i)getattr\s*\(\s*_*builtins?_*\s*,\s*["'](eval|exec|open|compile|input|globals|locals)["']\s*\)
+      - >-
+        (?i)_*builtins?_*\s*\[["'](eval|exec|open|compile)["']\]
+    exclude_regex: []

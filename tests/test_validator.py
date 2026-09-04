@@ -70,6 +70,10 @@ MALICIOUS_CASES = [
     ("PY-008", "app.run(debug=True)"),
     # input 直连危险函数
     ("PY-010", "eval(input())"),
+    # 动态访问危险内建（静态检测绕过，来自漏检上报闭环）
+    ("BL-005", 'getattr(builtins, "eval")(x)'),
+    ("BL-005", 'getattr(__builtins__, "exec")(code)'),
+    ("BL-005", '__builtins__["open"]("/etc/passwd")'),
 ]
 
 SAFE_CASES = [

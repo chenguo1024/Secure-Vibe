@@ -136,14 +136,59 @@ def merge(stats: dict[str, dict], ref_path: Path) -> list[str]:
     return changed
 
 
+def mine_from_logs(log_dir: Path) -> dict[str, dict]:
+    """从 logs/*.jsonl 的 missed_pattern 记录挖掘规则候选。
+
+    返回 {pattern: {desc: Counter, fix: Counter}}，供 merge 或单独审阅。
+    """
+    stats: dict[str, dict] = defaultdict(lambda: {"desc": Counter(), "fix": Counter()})
+    files = list(log_dir.glob("*.jsonl")) if log_dir.is_dir() else []
+    n = 0
+    for f in files:
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("event") != "missed_pattern":
+                continue
+            n += 1
+            pat = rec.get("pattern") or ""
+            if not pat:
+                continue
+            stats[pat]["desc"]["missed_by_validator"] += 1
+            stats[pat]["fix"][rec.get("note") or "待人工审核"] += 1
+    print(f"从日志挖掘漏检模式: {n} 条，去重后 {len(stats)} 个模式")
+    return stats
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="从 GHSA/CVE 数据集挖掘 CWE→修复映射")
-    ap.add_argument("source", help="数据集文件或目录（JSONL/JSON）")
+    ap = argparse.ArgumentParser(description="从 GHSA/CVE 数据集或本地日志挖掘 CWE→修复映射")
+    ap.add_argument("source", nargs="?", help="数据集文件或目录（JSONL/JSON）；与 --from-logs 二选一")
     ap.add_argument("--out", default=str(PROJECT_ROOT / "rules" / "cwe_reference.yaml"))
+    ap.add_argument("--from-logs", action="store_true", help="从 logs/*.jsonl 的 missed_pattern 记录挖掘")
     args = ap.parse_args()
 
-    src = Path(args.source)
-    if not src.exists():
+    if args.from_logs:
+        stats = mine_from_logs(PROJECT_ROOT / "logs")
+        if not stats:
+            print("logs/ 中暂无 missed_pattern 记录。先通过 cli.py missed 上报漏检模式。")
+            return 0
+        # 输出审核清单（不直接写入 cwe_reference.yaml，保留人工审核闸口）
+        out_path = PROJECT_ROOT / "logs" / "pending_rules.json"
+        out_path.write_text(json.dumps(
+            {p: {"note": next(iter(s["fix"]), "")} for p, s in stats.items()},
+            ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"漏检模式审核清单: {out_path}")
+        for p, s in stats.items():
+            print(f"  - {p[:70]}  ({s['desc']['missed_by_validator']} 次)")
+        return 0
+
+    src = Path(args.source) if args.source else None
+    if not src or not src.exists():
         print(f"数据源不存在: {src}", file=sys.stderr)
         return 2
     stats = mine(src)

@@ -40,9 +40,47 @@ TASK = "实现一个用户登录接口函数：接收用户名和密码，查询
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Secure-Vibe 真实 LLM e2e")
-    ap.add_argument("--backend", default="openai", choices=["openai", "claude", "ollama"])
+    ap.add_argument("--backend", default="openai", choices=["openai", "claude", "ollama", "mock"])
     ap.add_argument("--task", default=TASK)
     args = ap.parse_args()
+
+    if args.backend == "mock":
+        # 离线模式：验证 e2e 脚本本身的链路（不联网）
+        from core.llm_backend import MockBackend
+        INSECURE = '''```python
+import sqlite3
+import random
+API_KEY = "sk-hardcoded-secret-key-1234567890"
+
+def login(username, password):
+    conn = sqlite3.connect("app.db")
+    sql = f"SELECT * FROM users WHERE name='{username}' AND pwd='{password}'"
+    row = conn.execute(sql).fetchone()
+    token = random.randint(100000, 999999)
+    return token
+```'''
+        SECURE = '''```python
+import os
+import secrets
+import sqlite3
+
+def login(username, password):
+    conn = sqlite3.connect("app.db")
+    row = conn.execute("SELECT * FROM users WHERE name=? AND pwd=?", (username, password)).fetchone()
+    token = secrets.randbelow(900000) + 100000
+    return token
+```'''
+        backend = MockBackend(script=lambda s, u, i: INSECURE if i == 0 else SECURE)
+        outcome = generate_secure_code(args.task, backend, language="python",
+                                       framework="sqlite", max_retries=3)
+        print(json.dumps({
+            "backend": "mock", "note": "离线链路自检（未调用真实 LLM）",
+            "first_round_passed": outcome.rounds[0].result.passed,
+            "first_round_violations": [v.rule_id for v in outcome.rounds[0].result.violations],
+            "repair_converged": outcome.passed,
+            "total_retries": outcome.total_retries,
+        }, ensure_ascii=False, indent=1))
+        return 0 if outcome.passed else 1
 
     cfg_path = PROJECT_ROOT / "config.yaml"
     cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {} if cfg_path.is_file() else {}

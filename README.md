@@ -173,11 +173,12 @@ Secure-Vibe/
 │   ├── auth.py                #    安全登录接口
 │   └── file_upload.py         #    安全文件上传
 ├── tools/
-│   ├── mine_cwe_rules.py      # 从 GHSA-CySec 等数据集挖掘 CWE→修复映射
-│   ├── run_evaluation.py      # 专业级评测（SecurityEval，可选）
+│   ├── mine_cwe_rules.py      # 从 GHSA-CySec 挖掘 CWE→修复映射；--from-logs 挖漏检模式
+│   ├── run_evaluation.py      # 专业级评测（--local 离线基线 / SecurityEval）
+│   ├── benchmark.py           # 本地基准（检出率/误报率/耗时）
 │   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
 │   ├── server_smoke.py        # HTTP 服务冒烟测试
-│   └── llm_e2e.py             # 真实 LLM 端到端（需 API key / Ollama）
+│   └── llm_e2e.py             # 真实 LLM 端到端（--backend mock 离线自检）
 ├── tests/                     # 70 个用例（恶意检出 + 安全零误报 + 循环行为）
 ├── docs/
 │   ├── log_format.md          # 日志格式规范
@@ -284,6 +285,7 @@ pickle 反序列化）保留原样交给 LLM 或人工修复。
 | 调试接口 | Flask debug=True、Django DEBUG | PY-008/009 |
 | XSS | Markup/|safe | BL-003 |
 | 输入链 | input/request 直连危险函数 | PY-010 |
+| 动态内建 | getattr(builtins,"eval") 绕过 | BL-005 |
 
 ## 污点追踪（语义层检测）
 

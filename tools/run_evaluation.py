@@ -118,15 +118,29 @@ def evaluate(samples, language: str = "python") -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Secure-Vibe 专业级评测（SecurityEval）")
     ap.add_argument("--path", default="", help="SecurityEval 数据集路径（覆盖 config.yaml）")
+    ap.add_argument("--local", action="store_true", help="使用内置用例集跑离线基准（无需外部数据集）")
     args = ap.parse_args()
+
+    if args.local:
+        import benchmark
+        report = benchmark.run_benchmark(limit=0)
+        report["benchmark"] = "local_builtin"
+        out = PROJECT_ROOT / "logs" / "evaluation_report.json"
+        out.parent.mkdir(exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(json.dumps(report, ensure_ascii=False, indent=1))
+        print(f"\n离线基准报告已写入: {out}")
+        return 0
 
     cfg = load_eval_config()
     path = args.path or cfg.get("securityeval_path", "")
     if not path or not Path(path).is_dir():
-        print("未配置 SecurityEval 数据集路径。步骤：\n"
-              "  1. git clone https://github.com/s2labres/security-eval.git\n"
-              "  2. config.yaml: evaluation.securityeval_path: <路径>\n"
-              "  3. 重新运行本脚本", file=sys.stderr)
+        print("未配置 SecurityEval 数据集路径。两步方案：\n"
+              "  离线基线: python tools/run_evaluation.py --local\n"
+              "  论文级评测:\n"
+              "    1. git clone https://github.com/s2labres/security-eval.git\n"
+              "    2. config.yaml: evaluation.securityeval_path: <路径>\n"
+              "    3. 重新运行本脚本", file=sys.stderr)
         return 2
 
     samples = load_securityeval_samples(Path(path))
