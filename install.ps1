@@ -1,16 +1,28 @@
 ﻿# install.ps1 — 把 Secure-Vibe 安装到用户的 Agent 技能目录
 # 用法:
 #   默认安装到 opencode:  powershell -File install.ps1
+#   Codex:                powershell -File install.ps1 -Agent codex
+#   Claude Code:          powershell -File install.ps1 -Agent claude
 #   指定目录:             powershell -File install.ps1 -Target "C:\path\to\agent\skills\secure-vibe"
-#   Claude Code 风格:     powershell -File install.ps1 -Target "$env:USERPROFILE\.claude\skills\secure-vibe"
 param(
-    [string]$Target = "$env:USERPROFILE\.config\opencode\skill\secure-vibe",
+    # opencode / codex / claude（写入对应技能目录）
+    [string]$Agent = "opencode",
+    [string]$Target = "",
     # git 管理安装：从仓库克隆（此后 cli.py update / git pull 即可一键更新）
     [string]$Repo = ""
 )
 
 $ErrorActionPreference = "Stop"
 $Source = $PSScriptRoot
+
+$userHome = $env:USERPROFILE
+if (-not $Target) {
+    switch ($Agent) {
+        "codex"   { $Target = "$userHome\.codex\skills\secure-vibe" }
+        "claude"  { $Target = "$userHome\.claude\skills\secure-vibe" }
+        default   { $Target = "$userHome\.config\opencode\skill\secure-vibe" }
+    }
+}
 
 # 自动寻找带 pyyaml 的 Python（自检用）
 $pythonCmd = $null
@@ -35,15 +47,15 @@ if ($Repo) {
     & git clone $Repo $Target
     if ($LASTEXITCODE -ne 0) { Write-Error "git clone 失败"; exit 1 }
     Write-Host "git 管理安装完成: $Target"
-    $args = $PythonCmd.Split(" ") + @((Join-Path $Target "cli.py"), "selftest"); & $args[0] $args[1..($args.Count-1)]
+    $args = $pythonCmd.Split(" ") + @((Join-Path $Target "cli.py"), "selftest"); & $args[0] $args[1..($args.Count-1)]
     Write-Host "`n此后更新: python `"$Target\cli.py`" update"
     exit $LASTEXITCODE
 }
 
-# 需要复制的内容（排除日志/缓存/测试可留可不留）
+# 需要复制的内容（排除日志/缓存）
 $items = @(
     "SKILL.md", "cli.py", "main.py", "config.yaml", "requirements.txt", "README.md",
-    "core", "rules", "blacklist", "templates", "docs"
+    "VERSION", "core", "rules", "blacklist", "templates", "docs"
 )
 
 Write-Host "Secure-Vibe 安装器"

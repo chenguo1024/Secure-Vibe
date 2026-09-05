@@ -7,6 +7,13 @@ description: 生成时安全（Secure by Generation）：写代码之前注入�
 
 你（Agent）现在启用了"生成时安全"编码模式。**你不是先生成后检查，而是在写第一行代码之前就加载安全约束。** 本技能的校验器和规则引擎由本目录下的 Python 工具提供，LLM 就是你自己（session 模式）——不需要任何 API Key。
 
+## 调用方式（跨 Agent 统一）
+
+- 本技能的 CLI 是 `cli.py`，位于**本 SKILL.md 所在目录**（下文记作 `SKILL_DIR`，即你从磁盘读取此文件的那个目录）。下面所有命令都用其绝对路径 `python "$SKILL_DIR/cli.py"` 调用——按下面的方式展开后，opencode / Codex / Claude Code 及任何能执行 shell 的 Agent 一致适用。
+- 若你当前工作目录恰好是 `SKILL_DIR`，等价地写 `python cli.py ...` 即可（`cli.py` 不依赖工作目录，规则/模板均相对自身定位）。
+- 运行环境：Python 3.7+（Linux/macOS 若无 `python` 请用 `python3`）且已安装 `pyyaml`（本目录 `requirements.txt`，`pip install pyyaml`）。安装脚本会在安装时自动寻找带 pyyaml 的解释器并做 `selftest` 自检。
+- `context` / `validate` / `log` / `selftest` 全部本地执行、毫秒级、零网络、零 API Key。
+
 ## 适用与不适用
 
 - 适用语言：**Python / C / C++ / PHP / HTML / JavaScript(Node.js) / Go / Shell / Java / Dockerfile / Kubernetes / Terraform / GitHub Actions**。
@@ -39,7 +46,7 @@ description: 生成时安全（Secure by Generation）：写代码之前注入�
 ### 第 1 步：加载安全上下文（写代码之前）
 
 ```bash
-python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions> --framework "<框架>"
+python "$SKILL_DIR/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions> --framework "<框架>"
 ```
 
 阅读返回 JSON 中的 `system_prompt`（安全规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。这些规则是硬约束，你生成的代码必须逐条遵守。
@@ -57,7 +64,7 @@ python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <py
 ### 第 3 步：立即校验（毫秒级，必须执行）
 
 ```bash
-python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
+python "$SKILL_DIR/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
 ```
 
 - exit 0 → 通过，进入第 5 步
@@ -78,7 +85,7 @@ python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <
 ### 第 5 步：记录日志（必须执行）
 
 ```bash
-python "<skill_dir>/cli.py" log --task "<任务描述>" --file <最终代码文件> --retries <实际重试次数> --verdict <verdict>
+python "$SKILL_DIR/cli.py" log --task "<任务描述>" --file <最终代码文件> --retries <实际重试次数> --verdict <verdict>
 ```
 
 `--verdict` 取值及触发场景：
@@ -92,7 +99,7 @@ python "<skill_dir>/cli.py" log --task "<任务描述>" --file <最终代码文�
 ### 漏检上报（发现校验器没检出的危险模式时）
 
 ```bash
-python "<skill_dir>/cli.py" missed --pattern "<模式描述或代码片段>" --note "<说明>"
+python "$SKILL_DIR/cli.py" missed --pattern "<模式描述或代码片段>" --note "<说明>"
 ```
 
 ## 输入与输出约定
@@ -107,18 +114,18 @@ python "<skill_dir>/cli.py" missed --pattern "<模式描述或代码片段>" --n
 任务："写一个按用户名查订单的 FastAPI 接口（SQLite）"
 
 1. 加载规则：
-   python "<skill_dir>/cli.py" context --task "按用户名查订单接口" --language python --framework fastapi
+   python "$SKILL_DIR/cli.py" context --task "按用户名查订单接口" --language python --framework fastapi
    → `system_prompt` 含 GEN-005（SQL 字符串拼接）、GEN-001（硬编码密钥）等硬约束
 2. 生成 `orders.py`，其中一行：
    cursor.execute(f"SELECT * FROM orders WHERE user='{name}'")
 3. 校验：
-   python "<skill_dir>/cli.py" validate --file orders.py --language python
+   python "$SKILL_DIR/cli.py" validate --file orders.py --language python
    → exit 1，`violations` 示例：
    {"rule_id": "GEN-005", "line": 12, "severity": "high",
     "fix_hint": "使用参数化查询：cursor.execute(sql, params)；禁止 f-string/%/.format/+ 拼接 SQL"}
 4. 修复第 12 行为参数化查询 → 重新校验 → exit 0
 5. 记录：
-   python "<skill_dir>/cli.py" log --task "按用户名查订单接口" --file orders.py --retries 1 --verdict passed
+   python "$SKILL_DIR/cli.py" log --task "按用户名查订单接口" --file orders.py --retries 1 --verdict passed
 
 ## 命令参考
 

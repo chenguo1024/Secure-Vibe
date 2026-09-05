@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # install.sh — 把 Secure-Vibe 安装到用户的 Agent 技能目录（Linux/macOS）
 # 用法:
-#   ./install.sh                                    # 默认 opencode
-#   ./install.sh ~/.claude/skills/secure-vibe       # 指定目录
+#   ./install.sh                    # 默认 opencode
+#   ./install.sh codex              # 安装到 ~/.codex/skills/secure-vibe
+#   ./install.sh claude             # 安装到 ~/.claude/skills/secure-vibe
+#   ./install.sh /自定义/路径        # 指定目录
 set -euo pipefail
 
-TARGET="${1:-$HOME/.config/opencode/skill/secure-vibe}"
+TARGET="${1:-opencode}"
+case "$TARGET" in
+    opencode) TARGET="$HOME/.config/opencode/skill/secure-vibe" ;;
+    codex)    TARGET="$HOME/.codex/skills/secure-vibe" ;;
+    claude)   TARGET="$HOME/.claude/skills/secure-vibe" ;;
+esac
+
 SOURCE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${2:-}"   # 传入则使用 git 克隆安装（此后 cli.py update / git pull 更新）
 
@@ -13,15 +21,15 @@ if [ -n "$REPO" ]; then
     if [ -d "$TARGET/.git" ]; then
         echo "目标已是 git 管理安装，执行 git pull 更新:"
         git -C "$TARGET" pull --ff-only
-        python "$TARGET/cli.py" selftest
+        python3 "$TARGET/cli.py" selftest || python "$TARGET/cli.py" selftest
         exit $?
     fi
     rm -rf "$TARGET"
     git clone "$REPO" "$TARGET"
     echo "git 管理安装完成: $TARGET"
-    python "$TARGET/cli.py" selftest
+    python3 "$TARGET/cli.py" selftest || python "$TARGET/cli.py" selftest
     echo ""
-    echo "此后更新: python $TARGET/cli.py update"
+    echo "此后更新: python \"$TARGET/cli.py\" update"
     exit $?
 fi
 
@@ -31,7 +39,7 @@ echo "  目标: $TARGET"
 
 mkdir -p "$TARGET"
 
-for item in SKILL.md cli.py main.py config.yaml requirements.txt README.md core rules blacklist templates docs; do
+for item in SKILL.md cli.py main.py config.yaml requirements.txt README.md VERSION core rules blacklist templates docs; do
     if [ -e "$SOURCE/$item" ]; then
         rm -rf "$TARGET/$item"
         cp -r "$SOURCE/$item" "$TARGET/$item"
@@ -62,6 +70,6 @@ if [ -n "$PY_CMD" ]; then
     fi
 else
     echo "未找到带 pyyaml 的 Python。请先: pip install pyyaml，然后手动运行:" >&2
-    echo "  python $TARGET/cli.py selftest" >&2
+    echo "  python3 $TARGET/cli.py selftest" >&2
     exit 1
 fi

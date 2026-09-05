@@ -5,21 +5,38 @@
 
 ## 两种使用模式
 
+### 跨 Agent 安装（opencode / Codex / Claude Code）
+
+本 Skill 使用各主流 Agent 通用的 SKILL.md 格式（frontmatter: `name` + `description`），
+校验器 `cli.py` 相对自身定位规则/模板、**不依赖工作目录**，任何能执行 shell 的 Agent 均可调用：
+
+| Agent | 默认技能目录 | 安装命令 |
+|-------|-------------|----------|
+| opencode | `~/.config/opencode/skill/secure-vibe` | `./install.sh` 或 `powershell -File install.ps1` |
+| Codex | `~/.codex/skills/secure-vibe` | `./install.sh codex` 或 `powershell -File install.ps1 -Agent codex` |
+| Claude Code | `~/.claude/skills/secure-vibe` | `./install.sh claude` 或 `powershell -File install.ps1 -Agent claude` |
+| 其他/自定义 | 任意 | `./install.sh /path/to/skills/secure-vibe` 或 `-Target "C:\..."` |
+
+- 运行依赖：任意 Python 3.7+（Linux/macOS 用 `python3`）+ `pyyaml`（`pip install pyyaml`，见 `requirements.txt`）。安装脚本自动探测带 pyyaml 的解释器并跑 `selftest` 自检。
+- `context` / `validate` / `log` / `selftest` 均为本地毫秒级执行，**零网络、零 API Key**。
+
 ### 模式 A：安装进 Agent（推荐，Skill 的主形态）
 
-把本 Skill 安装到 Agent（opencode / Claude Code / 任意支持技能目录的框架），
+把本 Skill 安装到 Agent（opencode / Codex / Claude Code / 任意支持技能目录的框架），
 生成由 **Agent 自身的 LLM** 完成（session 模式），本 Skill 提供
 上下文构建 / 毫秒级校验 / 修复指令 / 日志 四个确定性工具，**零 API 依赖、零密钥**。
 
 ```bash
 # Windows（默认安装到 opencode 技能目录）
 powershell -File install.ps1
-# 或指定目标目录（Claude Code / 其他框架）
-powershell -File install.ps1 -Target "$env:USERPROFILE\.claude\skills\secure-vibe"
+# Codex / Claude Code
+powershell -File install.ps1 -Agent codex
+powershell -File install.ps1 -Agent claude
 
 # Linux / macOS
-./install.sh                        # 默认 ~/.config/opencode/skill/secure-vibe
-./install.sh ~/.claude/skills/secure-vibe
+./install.sh                 # 默认 opencode
+./install.sh codex           # Codex
+./install.sh claude          # Claude Code
 ```
 
 安装脚本自动复制技能文件并运行自检（`cli.py selftest`）。重启 Agent 后，
