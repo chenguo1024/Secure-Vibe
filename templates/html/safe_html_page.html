@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- 安全模板：safe_html_page — HTML 安全页面结构（few-shot 示例）
+     演示要点：
+     - 无内联事件处理器（CSP 兼容），事件绑定放外部 JS
+     - 外链脚本带 SRI（integrity + crossorigin）
+     - iframe 带 sandbox；_blank 链接带 rel="noopener"
+     - javascript: 伪协议绝不出现
+-->
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <!-- 内容安全策略：禁内联脚本，防 XSS -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' https://cdn.example.com">
+    <title>安全页面示例</title>
+    <!-- 外链脚本带 SRI 完整性校验（CWE-353 防护） -->
+    <script src="https://cdn.example.com/lib/app.min.js"
+            integrity="sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC"
+            crossorigin="anonymous"></script>
+</head>
+<body>
+    <!-- iframe 带 sandbox 最小权限（CWE-1021 防护） -->
+    <iframe src="https://embed.example.com/widget"
+            sandbox="allow-scripts"
+            referrerpolicy="no-referrer"
+            title="嵌入组件"></iframe>
+
+    <!-- _blank 链接带 noopener（CWE-1022 防护）；无 javascript: URL -->
+    <a href="https://example.com/help" target="_blank" rel="noopener noreferrer">帮助</a>
+
+    <!-- 表单：POST 提交，交由服务端生成 CSRF token -->
+    <form action="/search" method="post">
+        <input type="text" name="q" required maxlength="64">
+        <button type="submit" id="search-btn">搜索</button>
+    </form>
+
+    <script src="app.js"></script>
+</body>
+</html>

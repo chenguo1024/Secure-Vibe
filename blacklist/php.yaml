@@ -1,0 +1,25 @@
+# blacklist/php.yaml — PHP 危险模式黑名单（与 rules 格式一致；出现即判不通过）
+
+- id: BLP-001
+  name: php_superglobal_to_exec
+  severity: high
+  cwe: CWE-78
+  message: 超全局变量直接进入命令执行/eval（命令注入/代码注入，无商量余地）
+  fix_hint: 绝不允许 $_GET/$_POST/$_REQUEST/$_COOKIE 直接传入 exec/system/shell_exec/eval/assert；必须先白名单校验。
+  match:
+    regex:
+      - >-
+        (?i)\b(exec|system|shell_exec|passthru|eval|assert)\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)
+    exclude_regex: []
+
+- id: BLP-002
+  name: php_superglobal_to_include
+  severity: high
+  cwe: CWE-98
+  message: 超全局变量直接进入 include/require（远程/本地文件包含，无商量余地）
+  fix_hint: 绝不允许 $_GET/$_POST/$_REQUEST/$_COOKIE 直接作为 include/require 路径；必须白名单映射到固定文件。
+  match:
+    regex:
+      - >-
+        (?i)\b(include|require)(_once)?\s*\(?\s*\$_(GET|POST|REQUEST|COOKIE)
+    exclude_regex: []

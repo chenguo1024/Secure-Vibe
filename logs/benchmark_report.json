@@ -5,8 +5,8 @@
  "safe_samples": 22,
  "detection_rate": 1.0,
  "false_positive_rate": 0.0,
- "avg_latency_ms": 0.23,
- "max_latency_ms": 0.794,
+ "avg_latency_ms": 0.176,
+ "max_latency_ms": 0.46,
  "per_rule": {
   "BL-005": {
    "total": 3,

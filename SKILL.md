@@ -9,10 +9,11 @@ description: 生成时安全（Secure by Generation）：写 Python/C/C++ 代码
 
 ## 适用与不适用
 
-- 适用语言：**Python / C / C++**（`--language` 取值：`python`、`c`、`cpp`；C++ 写 `cpp` 或 `C++` 均可）。
-- 各语言覆盖：通用安全规则（密钥/SQL/明文 HTTP/弱哈希/JWT/TLS）三语言共享；语言特有规则见下表。
-- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Java/Go/JS 等暂未覆盖，规则引擎会退化为仅通用规则）。
-- 非 C/Python 任务：说明暂不支持该语言的完整规则集，可作通用口头提醒（如密钥不入库），不要用错误的 `--language` 调 `validate`。
+- 适用语言：**Python / C / C++ / PHP / HTML / JavaScript**（`--language` 取值：`python`、`c`、`cpp`、`php`、`html`、`js`；C++ 写 `cpp` 或 `C++`，JS 写 `js` 或 `javascript` 均可）。
+- 各语言覆盖：通用安全规则（密钥/SQL/明文 HTTP/弱哈希/JWT/TLS）全部语言共享；语言特有规则见下表。
+- 继承链：`cpp` 自动加载 C 规则；`php` 自动加载 HTML+JS 规则（PHP 模板中的 HTML/JS 片段同样被检测）；`html` 自动加载 JS 规则（内联脚本同样被检测）。
+- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Java/Go/Rust 等暂未覆盖，规则引擎会退化为仅通用规则）。
+- 未覆盖语言任务：说明暂不支持该语言的完整规则集，可作通用口头提醒（如密钥不入库），不要用错误的 `--language` 调 `validate`。
 
 ### 语言特有检测能力
 
@@ -21,13 +22,16 @@ description: 生成时安全（Secure by Generation）：写 Python/C/C++ 代码
 | python | eval/exec、os.system、shell=True、pickle/yaml 反序列化、input 污点追踪（AST 引擎） |
 | c | system/popen、sprintf、strcpy/strcat、rand、非常量格式字符串、scanf %s、tmpnam/mktemp |
 | cpp | 继承全部 C 规则 + std:: 不安全函数、字符串拼接构造命令 |
+| php | shell_exec/eval/unserialize/include 变量、SQL 拼接超全局、echo 超全局未转义（XSS）、extract；黑名单：超全局直接进命令执行/include；继承 HTML+JS 规则 |
+| html | 内联事件处理器、javascript: 伪协议 URL、iframe 无 sandbox、CDN 脚本无 SRI、_blank 无 noopener；继承 JS 规则 |
+| js | eval/new Function、innerHTML 非字面量赋值（DOM XSS）、document.write、字符串定时器、postMessage 通配符源；黑名单：location/URL 直写 innerHTML |
 
 ## 工作流（每次写代码必须完整执行）
 
 ### 第 1 步：加载安全上下文（写代码之前）
 
 ```bash
-python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp> --framework "<框架>"
+python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js> --framework "<框架>"
 ```
 
 阅读返回 JSON 中的 `system_prompt`（安全规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。这些规则是硬约束，你生成的代码必须逐条遵守。
@@ -45,7 +49,7 @@ python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <py
 ### 第 3 步：立即校验（毫秒级，必须执行）
 
 ```bash
-python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp>
+python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js>
 ```
 
 - exit 0 → 通过，进入第 5 步
@@ -85,7 +89,7 @@ python "<skill_dir>/cli.py" missed --pattern "<模式描述或代码片段>" --n
 
 ## 输入与输出约定
 
-- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`，无则省略）。
+- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`/`php`/`html`/`js`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`/`laravel`，无则省略）。混合模板（PHP 文件含 HTML/JS）直接用 `--language php`，继承链会覆盖 HTML/JS 片段。
 - `context` 输出 JSON：关键字段为 `system_prompt`（规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。
 - `validate` 输出 JSON：`passed`、`violations`（每条含 `rule_id`/`line`/`severity`/`fix_hint`）、`summary`、`syntax_error`（语法错误时非空）、`repair_instruction`。
 - `severity` 三档：`high` / `medium` / `low`。

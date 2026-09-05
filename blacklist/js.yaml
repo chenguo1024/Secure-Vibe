@@ -1,0 +1,13 @@
+# blacklist/js.yaml — JavaScript 危险模式黑名单（与 rules 格式一致；出现即判不通过）
+
+- id: BLJ-001
+  name: js_dom_xss_from_location
+  severity: high
+  cwe: CWE-79
+  message: 将 location/URL/window.name 等 URL 源直接写入 innerHTML（DOM XSS，无商量余地）
+  fix_hint: 绝不允许把 location.href/search/hash、document.URL、window.name 直接写入 innerHTML；解析参数用 URLSearchParams + textContent。
+  match:
+    regex:
+      - >-
+        (?i)\.innerHTML\s*=[^;\n]*(location\.(href|search|hash|pathname)|document\.(URL|documentURI|baseURI)|window\.name)
+    exclude_regex: []

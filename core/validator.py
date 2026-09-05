@@ -37,11 +37,18 @@ LANGUAGE_ALIASES = {
     "cc": "cpp",
     "py": "python",
     "py3": "python",
+    "javascript": "js",
+    "htm": "html",
 }
 
-# 语言继承链：cpp 加载 c.yaml（C 代码基本是合法 C++，C 规则对 C++ 同样适用）
+# 语言继承链：
+#   cpp  加载 c.yaml（C 代码基本是合法 C++，C 规则对 C++ 同样适用）
+#   php  加载 html + js（PHP 模板中常混 HTML/JS 片段，网页规则同样覆盖）
+#   html 加载 js（内联 <script> 片段同样被 JS 规则覆盖）
 LANGUAGE_INHERITS = {
     "cpp": ["c"],
+    "php": ["html", "js"],
+    "html": ["js"],
 }
 
 

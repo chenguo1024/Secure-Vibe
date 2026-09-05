@@ -340,6 +340,23 @@ def cmd_selftest(args) -> int:
         checks["cpp_rules_loaded"] = len(vpp.rules)
         r_pp = vpp.validate('std::strcpy(dst, src);')
         checks["detects_cpp_strcpy"] = (not r_pp.passed) and any(x.rule_id == "CPP-001" for x in r_pp.violations)
+        # PHP 规则自检（含继承的 html/js 规则）
+        vphp = Validator(language="php")
+        checks["php_rules_loaded"] = len(vphp.rules)
+        r_php = vphp.validate("<?php system($_GET['cmd']); ?>")
+        checks["detects_php_superglobal_exec"] = (not r_php.passed) and any(
+            x.rule_id == "BLP-001" for x in r_php.violations)
+        r_php_safe = vphp.validate("<?php echo htmlspecialchars($_GET['name'], ENT_QUOTES, 'UTF-8'); ?>")
+        checks["php_safe_passes"] = r_php_safe.passed
+        # HTML 规则自检
+        vhtml = Validator(language="html")
+        r_html = vhtml.validate('<a href="javascript:alert(1)">x</a>')
+        checks["detects_html_js_url"] = (not r_html.passed) and any(
+            x.rule_id == "HTML-002" for x in r_html.violations)
+        # JS 规则自检
+        vjs = Validator(language="js")
+        r_js = vjs.validate('eval(userInput);')
+        checks["detects_js_eval"] = (not r_js.passed) and any(x.rule_id == "JS-001" for x in r_js.violations)
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             lg = SecureLogger(log_dir=Path(td))
@@ -350,6 +367,8 @@ def cmd_selftest(args) -> int:
         ok = all([checks["rules_loaded"] > 0, checks["detects_eval"],
                   checks["safe_code_passes"], checks["detects_c_sprintf"],
                   checks["c_safe_passes"], checks["detects_cpp_strcpy"],
+                  checks["detects_php_superglobal_exec"], checks["php_safe_passes"],
+                  checks["detects_html_js_url"], checks["detects_js_eval"],
                   checks["log_writable"]])
         print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
         return 0 if ok else 1

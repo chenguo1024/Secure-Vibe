@@ -119,8 +119,9 @@ def _few_shot(language: str, task_description: str,
     templates_dir = Path(templates_dir) if templates_dir else PROJECT_ROOT / "templates" / lang
     if not templates_dir.is_dir():
         return ""
-    # 模板文件扩展名按语言：python -> .py，c -> .c，cpp -> .cpp
-    ext = {"python": "py", "c": "c", "cpp": "cpp"}.get(lang, "py")
+    # 模板文件扩展名按语言：python -> .py，c -> .c，cpp -> .cpp，php/html/js 同名
+    ext = {"python": "py", "c": "c", "cpp": "cpp",
+           "php": "php", "html": "html", "js": "js"}.get(lang, "py")
     available = sorted(p.stem for p in templates_dir.glob(f"*.{ext}"))
     wanted: list[str] = []
     for pattern, tpl in TASK_TEMPLATE_HINTS:
