@@ -28,10 +28,11 @@ try:
 except ImportError:  # 独立使用 context_builder 时的兜底
     LANGUAGE_ALIASES = {
         "c++": "cpp", "cxx": "cpp", "cc": "cpp", "py": "python", "py3": "python",
-        "javascript": "js", "htm": "html", "golang": "go",
-        "bash": "sh", "shell": "sh", "zsh": "sh",
+        "javascript": "js", "htm": "html", "node": "js", "nodejs": "js",
+        "golang": "go", "bash": "sh", "shell": "sh", "zsh": "sh",
         "docker": "dockerfile", "containerfile": "dockerfile",
         "k8s": "kubernetes", "kube": "kubernetes", "tf": "terraform", "hcl": "terraform",
+        "workflow": "github-actions", "gha": "github-actions", "github_actions": "github-actions",
     }
     LANGUAGE_INHERITS = {"cpp": ["c"], "php": ["html", "js"], "html": ["js"]}
 
@@ -128,9 +129,9 @@ def _few_shot(language: str, task_description: str,
     # 模板文件扩展名按语言：python -> .py，c -> .c，cpp -> .cpp，php/html/js 同名
     ext = {"python": "py", "c": "c", "cpp": "cpp",
            "php": "php", "html": "html", "js": "js",
-           "go": "go", "sh": "sh",
+           "go": "go", "sh": "sh", "java": "java",
            "dockerfile": "dockerfile", "kubernetes": "yaml",
-           "terraform": "tf"}.get(lang, "py")
+           "terraform": "tf", "github-actions": "yml"}.get(lang, "py")
     available = sorted(p.stem for p in templates_dir.glob(f"*.{ext}"))
     wanted: list[str] = []
     for pattern, tpl in TASK_TEMPLATE_HINTS:

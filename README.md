@@ -168,17 +168,19 @@ Secure-Vibe/
 │   ├── cpp.yaml               # C++ 规则（2 条：std:: 不安全函数/拼接命令；继承 C 规则）
 │   ├── php.yaml               # PHP 规则（7 条：shell_exec/eval/SQL拼接超全局/unserialize/include 变量/echo 未转义/extract）
 │   ├── html.yaml              # HTML 规则（5 条：内联事件/javascript: URL/iframe 无 sandbox/CDN 无 SRI/_blank 无 noopener）
-│   ├── js.yaml                # JS 规则（5 条：eval/innerHTML DOM XSS/document.write/字符串定时器/postMessage）
+│   ├── js.yaml                # JS/Node 规则（9 条：eval/innerHTML/doc.write/定时器/postMessage/exec 拼接/res.send/原型污染/动态 require）
 │   ├── go.yaml                # Go 规则（7 条：exec 经 shell/SQL 拼接/SSRF/template.HTML/rand/表单入 sink/TLS）
+│   ├── java.yaml              # Java/Spring 规则（7 条：exec 拼接/JDBC 拼接/反序列化/XXE/Random/Actuator/ECB）
 │   ├── sh.yaml                # Shell 规则（5 条：curl|sh/eval/rm -rf/未引号变量/NOPASSWD）
 │   ├── dockerfile.yaml        # Dockerfile 规则（5 条：USER root/密钥入镜像/curl|sh/远程 ADD/latest）
 │   ├── kubernetes.yaml        # K8s 规则（5 条：privileged/hostPath/hostNetwork/root/Secret env）
 │   ├── terraform.yaml         # Terraform 规则（5 条：0.0.0.0/0/public ACL/public RDS/硬编码密钥/全端口）
+│   ├── github-actions.yaml    # GitHub Actions 规则（3 条：表达式注入/密钥入日志/未锁定 action）
 │   └── cwe_reference.yaml     # CWE 参考知识库（21 条，可由 tools/mine_cwe_rules.py 扩充）
 ├── blacklist/python.yaml      # Python 硬禁用黑名单（7 条）
 ├── blacklist/c.yaml           # C/C++ 硬禁用黑名单（2 条：gets/system变量命令）
 ├── blacklist/php.yaml         # PHP 硬禁用黑名单（2 条：超全局直接进命令执行/include）
-├── blacklist/js.yaml          # JS 硬禁用黑名单（1 条：location/URL 直写 innerHTML）
+├── blacklist/js.yaml          # JS/Node 硬禁用黑名单（2 条：location/URL 直写 innerHTML、用户输入深层合并）
 ├── templates/python/          # Python 安全模板（7 个）
 │   ├── db_query.py            #    参数化 SQL
 │   ├── password_hash.py       #    PBKDF2 密码哈希
@@ -189,9 +191,10 @@ Secure-Vibe/
 ├── templates/cpp/             # C++ 安全模板（std::string/getline）
 ├── templates/php/             # PHP 安全模板（PDO 预处理 + htmlspecialchars）
 ├── templates/html/            # HTML 安全模板（CSP/SRI/sandbox/noopener）
-├── templates/js/              # JS 安全模板（textContent/addEventListener/postMessage）
+├── templates/js/              # JS/Node 安全模板（textContent/addEventListener/postMessage）
 ├── templates/go/              # Go 安全模板（占位符 SQL/exec 参数列表）
 ├── templates/sh/              # Shell 安全模板（引号变量/先校验后执行）
+├── templates/java/            # Java 安全模板（PreparedStatement/SecureRandom）
 ├── tools/
 │   ├── mine_cwe_rules.py      # 从 GHSA-CySec 挖掘 CWE→修复映射；--from-logs 挖漏检模式
 │   ├── run_evaluation.py      # 专业级评测（--local 离线基线 / SecurityEval）
@@ -199,7 +202,7 @@ Secure-Vibe/
 │   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
 │   ├── server_smoke.py        # HTTP 服务冒烟测试
 │   └── llm_e2e.py             # 真实 LLM 端到端（--backend mock 离线自检）
-├── tests/                     # 203 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复 + C/C++ + 网页 + Go/Shell + IaC）
+├── tests/                     # 225 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复 + C/C++ + 网页 + Go/Shell + IaC + Java/Node + CI）
 ├── docs/
 │   ├── log_format.md          # 日志格式规范
 │   └── evaluation.md          # 专业级评测指南
@@ -208,7 +211,7 @@ Secure-Vibe/
 
 ## 如何扩展规则（无需改动代码）
 
-在 `rules/python.yaml`（或 `general.yaml`、`c.yaml`、`cpp.yaml`、`php.yaml`、`html.yaml`、`js.yaml`、`go.yaml`、`sh.yaml`、`dockerfile.yaml`、`kubernetes.yaml`、`terraform.yaml`）中新增一个列表项即可：
+在 `rules/python.yaml`（或 `general.yaml`、`c.yaml`、`cpp.yaml`、`php.yaml`、`html.yaml`、`js.yaml`、`go.yaml`、`java.yaml`、`sh.yaml`、`dockerfile.yaml`、`kubernetes.yaml`、`terraform.yaml`、`github-actions.yaml`）中新增一个列表项即可：
 
 ```yaml
 - id: PY-011                       # 唯一 ID

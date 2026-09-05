@@ -11,3 +11,15 @@
       - >-
         (?i)\.innerHTML\s*=[^;\n]*(location\.(href|search|hash|pathname)|document\.(URL|documentURI|baseURI)|window\.name)
     exclude_regex: []
+
+- id: BLJ-002
+  name: node_proto_pollution_merge
+  severity: high
+  cwe: CWE-1321
+  message: 直接用用户输入做深层合并（原型污染，无商量余地）
+  fix_hint: 禁止将 JSON.parse(req.body) 结果直接 merge/deep-extend 进对象；合并前过滤 __proto__/constructor 键。
+  match:
+    regex:
+      - >-
+        (?i)(merge|deepMerge|\.extend|Object\.assign)\s*\([^)]*JSON\.parse\s*\([^)]*(req\.(query|body|params)|payload|input)
+    exclude_regex: []

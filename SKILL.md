@@ -9,11 +9,11 @@ description: 生成时安全（Secure by Generation）：写代码之前注入�
 
 ## 适用与不适用
 
-- 适用语言：**Python / C / C++ / PHP / HTML / JavaScript / Go / Shell / Dockerfile / Kubernetes / Terraform**。
-- `--language` 取值：`python`、`c`、`cpp`、`php`、`html`、`js`、`go`、`sh`、`dockerfile`、`kubernetes`、`terraform`；别名可用（`C++`→`cpp`、`javascript`→`js`、`golang`→`go`、`bash`→`sh`、`docker`→`dockerfile`、`k8s`→`kubernetes`、`tf`→`terraform`）。
+- 适用语言：**Python / C / C++ / PHP / HTML / JavaScript(Node.js) / Go / Shell / Java / Dockerfile / Kubernetes / Terraform / GitHub Actions**。
+- `--language` 取值：`python`、`c`、`cpp`、`php`、`html`、`js`、`go`、`sh`、`java`、`dockerfile`、`kubernetes`、`terraform`、`github-actions`；别名可用（`C++`→`cpp`、`javascript`/`node`/`nodejs`→`js`、`golang`→`go`、`bash`→`sh`、`docker`→`dockerfile`、`k8s`→`kubernetes`、`tf`→`terraform`、`workflow`/`gha`→`github-actions`）。
 - 各语言覆盖：通用安全规则（密钥/SQL/明文 HTTP/弱哈希/JWT/TLS）全部语言共享；语言特有规则见下表。
 - 继承链：`cpp` 自动加载 C 规则；`php` 自动加载 HTML+JS 规则（PHP 模板中的 HTML/JS 片段同样被检测）；`html` 自动加载 JS 规则（内联脚本同样被检测）。
-- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Java/Rust/Ruby 等暂未覆盖，规则引擎会退化为仅通用规则）。
+- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Rust/Ruby/Swift 等暂未覆盖，规则引擎会退化为仅通用规则）。
 - 未覆盖语言任务：说明暂不支持该语言的完整规则集，可作通用口头提醒（如密钥不入库），不要用错误的 `--language` 调 `validate`。
 
 ### 语言特有检测能力
@@ -25,19 +25,21 @@ description: 生成时安全（Secure by Generation）：写代码之前注入�
 | cpp | 继承全部 C 规则 + std:: 不安全函数、字符串拼接构造命令 |
 | php | shell_exec/eval/unserialize/include 变量、SQL 拼接超全局、echo 超全局未转义（XSS）、extract；黑名单：超全局直接进命令执行/include；继承 HTML+JS 规则 |
 | html | 内联事件处理器、javascript: 伪协议 URL、iframe 无 sandbox、CDN 脚本无 SRI、_blank 无 noopener；继承 JS 规则 |
-| js | eval/new Function、innerHTML 非字面量赋值（DOM XSS）、document.write、字符串定时器、postMessage 通配符源；黑名单：location/URL 直写 innerHTML |
+| js | eval/new Function、innerHTML 非字面量赋值（DOM XSS）、document.write、字符串定时器、postMessage 通配符源；Node：child_process.exec 拼接、res.send 反射、原型污染、动态 require；黑名单：location/URL 直写 innerHTML、prototype pollution merge |
 | go | exec.Command 经 shell、SQL 拼接/fmt.Sprintf、SSRF、template.HTML 未转义、math/rand 安全值、表单参数直入文件/命令、InsecureSkipVerify |
+| java | Runtime.exec 拼接、JDBC Statement 拼接、ObjectInputStream 反序列化、XXE（DocumentBuilder/SAXParser）、java.util.Random、Spring Actuator 敏感端点、AES/ECB |
 | sh | curl/wget 管道给 shell、eval 变量、rm -rf 危险目标、未加引号变量、sudo NOPASSWD |
 | dockerfile | USER root、ENV/ARG 写密钥、curl\|sh、ADD 远程 URL、latest 标签 |
 | kubernetes | privileged、hostPath、hostNetwork/hostPID、runAsUser 0/特权提升、Secret 全量 env |
 | terraform | 0.0.0.0/0 安全组、S3 public-read、RDS public、硬编码密钥 default、全端口入站 |
+| github-actions | run 中展开 ${{ github.event.* }}（表达式注入）、echo secrets、@main/@master 未锁定 action |
 
 ## 工作流（每次写代码必须完整执行）
 
 ### 第 1 步：加载安全上下文（写代码之前）
 
 ```bash
-python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js|go|sh|dockerfile|kubernetes|terraform> --framework "<框架>"
+python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions> --framework "<框架>"
 ```
 
 阅读返回 JSON 中的 `system_prompt`（安全规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。这些规则是硬约束，你生成的代码必须逐条遵守。
@@ -55,7 +57,7 @@ python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <py
 ### 第 3 步：立即校验（毫秒级，必须执行）
 
 ```bash
-python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js|go|sh|dockerfile|kubernetes|terraform>
+python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
 ```
 
 - exit 0 → 通过，进入第 5 步
@@ -95,7 +97,7 @@ python "<skill_dir>/cli.py" missed --pattern "<模式描述或代码片段>" --n
 
 ## 输入与输出约定
 
-- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`/`php`/`html`/`js`/`go`/`sh`/`dockerfile`/`kubernetes`/`terraform`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`/`laravel`，无则省略）。混合模板（PHP 文件含 HTML/JS）直接用 `--language php`，继承链会覆盖 HTML/JS 片段；Docker/K8s/Terraform 属于 IaC，直接传对应语言名。
+- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`/`php`/`html`/`js`/`go`/`sh`/`java`/`dockerfile`/`kubernetes`/`terraform`/`github-actions`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`/`laravel`/`spring`，无则省略）。混合模板（PHP 文件含 HTML/JS）直接用 `--language php`，继承链会覆盖 HTML/JS 片段；Docker/K8s/Terraform/GitHub Actions 属于 IaC/流水线，直接传对应语言名。
 - `context` 输出 JSON：关键字段为 `system_prompt`（规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。
 - `validate` 输出 JSON：`passed`、`violations`（每条含 `rule_id`/`line`/`severity`/`fix_hint`）、`summary`、`syntax_error`（语法错误时非空）、`repair_instruction`。
 - `severity` 三档：`high` / `medium` / `low`。

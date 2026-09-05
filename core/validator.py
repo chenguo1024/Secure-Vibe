@@ -39,6 +39,8 @@ LANGUAGE_ALIASES = {
     "py3": "python",
     "javascript": "js",
     "htm": "html",
+    "node": "js",
+    "nodejs": "js",
     "golang": "go",
     "bash": "sh",
     "shell": "sh",
@@ -49,6 +51,9 @@ LANGUAGE_ALIASES = {
     "kube": "kubernetes",
     "tf": "terraform",
     "hcl": "terraform",
+    "workflow": "github-actions",
+    "gha": "github-actions",
+    "github_actions": "github-actions",
 }
 
 # 语言继承链：

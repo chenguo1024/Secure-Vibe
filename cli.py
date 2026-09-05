@@ -375,6 +375,16 @@ def cmd_selftest(args) -> int:
         checks["detects_py_ssrf"] = (not r_ssrf.passed) and any(x.rule_id == "PY-011" for x in r_ssrf.violations)
         r_ml = vpy2.validate('torch.load(model_path)')
         checks["detects_py_ml_deser"] = (not r_ml.passed) and any(x.rule_id == "PY-021" for x in r_ml.violations)
+        # Java / Node / GitHub Actions 规则自检
+        vja = Validator(language="java")
+        r_ja = vja.validate('Runtime.getRuntime().exec("sh -c " + userInput)')
+        checks["detects_java_exec"] = (not r_ja.passed) and any(x.rule_id == "JAVA-001" for x in r_ja.violations)
+        vno = Validator(language="nodejs")
+        r_no = vno.validate('exec("sh -c " + userInput)')
+        checks["detects_node_exec"] = (not r_no.passed) and any(x.rule_id == "JS-006" for x in r_no.violations)
+        vgha = Validator(language="workflow")
+        r_gha = vgha.validate('run: echo "hello ${{ github.event.issue.body }}"')
+        checks["detects_gha_injection"] = (not r_gha.passed) and any(x.rule_id == "GHA-001" for x in r_gha.violations)
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             lg = SecureLogger(log_dir=Path(td))
@@ -390,6 +400,8 @@ def cmd_selftest(args) -> int:
                   checks["detects_go_sql_concat"], checks["detects_sh_curl_pipe"],
                   checks["detects_docker_root"], checks["detects_tf_open_cidr"],
                   checks["detects_py_ssrf"], checks["detects_py_ml_deser"],
+                  checks["detects_java_exec"], checks["detects_node_exec"],
+                  checks["detects_gha_injection"],
                   checks["log_writable"]])
         print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
         return 0 if ok else 1

@@ -65,3 +65,58 @@
       - >-
         postMessage\s*\([^)]*,\s*["']\*["']
     exclude_regex: []
+
+- id: JS-006
+  name: node_child_process_exec_string
+  severity: high
+  cwe: CWE-78
+  message: child_process.exec/execSync 以拼接字符串执行命令（命令注入风险）
+  fix_hint: 改用 execFile/spawn 参数列表传参；禁止 exec(`"..." + user`)、exec("sh -c " + user)；用户输入必须转义或白名单。
+  match:
+    regex:
+      - >-
+        (?i)\b(exec|execSync)\s*\([^)]*\+
+      - >-
+        (?i)\b(exec|execSync)\s*\([^)]*(req\.(query|body|params)|process\.argv)
+    exclude_regex: []
+- id: JS-007
+  name: node_unescaped_output
+  severity: high
+  cwe: CWE-79
+  message: 把请求参数直接回显（res.send/res.end 反射型 XSS）
+  fix_hint: 回显用户输入前先转义或用模板引擎自动转义；JSON 接口返回 JSON，HTML 接口必须 HTML 转义。
+  match:
+    regex:
+      - >-
+        (?i)res\.(send|end|write)\s*\([^)]*(req\.(query|params|body)|req\.query)
+    exclude_regex:
+      - >-
+        json\.stringify|escapeHtml|sanitize|encodeURI
+
+- id: JS-008
+  name: js_prototype_pollution
+  severity: high
+  cwe: CWE-1321
+  message: 把用户 JSON 递归合并进对象（原型污染风险）
+  fix_hint: 深层合并时过滤 __proto__/constructor/prototype 键；用 Object.create(null) 或 whitelist 字段；禁止 Object.assign({}, JSON.parse(userInput))。
+  match:
+    regex:
+      - >-
+        (?i)(Object\.assign|\.extend|merge|deepMerge)\s*\([^)]*(JSON\.parse|req\.(query|body|params)|\bdata\b)
+      - >-
+        (?i)__proto__|\[["']constructor["']\]\s*:
+    exclude_regex: []
+
+- id: JS-009
+  name: node_dynamic_require
+  severity: medium
+  cwe: CWE-98
+  message: 使用动态表达式 require/import（远程文件加载风险）
+  fix_hint: 禁止 require(用户输入) 或 import(动态拼接)；要动态加载用固定白名单映射到静态模块。
+  match:
+    regex:
+      - >-
+        (?i)\brequire\s*\([^)]*(req\.(query|body|params)|\+\s*\w+|process\.argv)
+      - >-
+        \brequire\s*\(\s*[A-Za-z_$][\w$]*\s*\)
+    exclude_regex: []

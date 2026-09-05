@@ -1,0 +1,38 @@
+# rules/github-actions.yaml — GitHub Actions 工作流安全规则（正则引擎；workflow/gha 别名归一化）
+# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+
+- id: GHA-001
+  name: gha_expression_injection
+  severity: high
+  cwe: CWE-74
+  message: run 脚本中直接展开不可信表达式（${{ github.event.issue.body }} 等，脚本注入风险）
+  fix_hint: 把 issue/PR 内容写入环境变量（env）再引用，绝不在 run 里直接展开 ${{ github.event.* }} 文本；引号包裹在脚本上下文内也挡不住注入。
+  match:
+    regex:
+      - >-
+        run\s*:\s*[^\n]*\$\{\{\s*github\.event\.(issue|pull_request|comment|review|discussion)\.(body|title|title|.*)
+    exclude_regex: []
+
+- id: GHA-002
+  name: gha_secret_to_log
+  severity: medium
+  cwe: CWE-532
+  message: 把 secret 写入日志（echo/printf 输出 secrets）
+  fix_hint: 禁止 echo ${{ secrets.X }}；需要诊断用掩码或环境变量测是否存在（如 [ -n "$TOKEN" ]）。Actions 自动对注册 secret 打码，但直接 echo 仍不必要且易泄露。
+  match:
+    regex:
+      - >-
+        (?i)\b(echo|printf|cat|print)\b[^\n]*\$\{\{\s*secrets\.[A-Za-z_]+\s*\}\}
+    exclude_regex: []
+
+- id: GHA-003
+  name: gha_unpinned_action
+  severity: medium
+  cwe: CWE-1104
+  message: 使用未锁定版本/引用的第三方 action（供应链风险）
+  fix_hint: "锁定 action 到完整提交 SHA（uses: actions/checkout@<40位sha>）或至少具体 tag；禁止 @main/@master 浮动引用。"
+  match:
+    regex:
+      - >-
+        (?i)\buses\s*:\s*[^\s@]+\/\S+@(main|master|head|latest)\b
+    exclude_regex: []
