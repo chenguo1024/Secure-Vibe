@@ -22,6 +22,24 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# 语言归一化与继承链（与 core/validator.py 保持一致）
+try:
+    from core.validator import language_chain, normalize_language
+except ImportError:  # 独立使用 context_builder 时的兜底
+    LANGUAGE_ALIASES = {"c++": "cpp", "cxx": "cpp", "cc": "cpp", "py": "python", "py3": "python"}
+    LANGUAGE_INHERITS = {"cpp": ["c"]}
+
+    def normalize_language(language: str) -> str:
+        return LANGUAGE_ALIASES.get(language.strip().lower(), language.strip().lower())
+
+    def language_chain(language: str) -> list[str]:
+        chain = ["general"]
+        for base in LANGUAGE_INHERITS.get(language, []):
+            chain.append(base)
+        chain.append(language)
+        seen: set[str] = set()
+        return [x for x in chain if not (x in seen or seen.add(x))]
+
 # 任务描述中的关键词 -> 推荐加载的安全模板（few-shot 按需注入，控制 token 消耗）
 TASK_TEMPLATE_HINTS: list[tuple[str, str]] = [
     ("登录|auth|认证|jwt|会话|session", "auth"),
@@ -45,6 +63,7 @@ def load_rules_for_prompt(language: str, rules_dir: Optional[Path] = None,
     """加载并按语言筛选规则，返回 {general, language_rules, blacklist}。"""
     rules_dir = Path(rules_dir) if rules_dir else PROJECT_ROOT / "rules"
     blacklist_dir = Path(blacklist_dir) if blacklist_dir else PROJECT_ROOT / "blacklist"
+    lang_norm = normalize_language(language)
 
     def _read(d: Path, name: str) -> list[dict]:
         p = d / f"{name}.yaml"
@@ -53,9 +72,15 @@ def load_rules_for_prompt(language: str, rules_dir: Optional[Path] = None,
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or []
         return [x for x in data if isinstance(x, dict) and "id" in x]
 
+    # 按语言链加载：general + 继承语言 + 本语言（如 cpp -> general + c + cpp）
+    chain = language_chain(lang_norm)
     general = _read(rules_dir, "general")
-    lang = _read(rules_dir, language.lower())
-    blacklist = _read(blacklist_dir, language.lower()) + _read(blacklist_dir, "general")
+    lang: list[dict] = []
+    for name in chain[1:]:  # 跳过 general
+        lang.extend(_read(rules_dir, name))
+    blacklist = _read(blacklist_dir, "general")
+    for name in chain[1:]:
+        blacklist.extend(_read(blacklist_dir, name))
     return {"general": general, "language_rules": lang, "blacklist": blacklist}
 
 
@@ -90,25 +115,29 @@ def _format_checklist(language: str) -> str:
 def _few_shot(language: str, task_description: str,
               templates_dir: Optional[Path] = None, max_templates: int = 2) -> str:
     """按任务关键词挑选安全模板作为 few-shot 示例。"""
-    templates_dir = Path(templates_dir) if templates_dir else PROJECT_ROOT / "templates" / language
+    lang = normalize_language(language)
+    templates_dir = Path(templates_dir) if templates_dir else PROJECT_ROOT / "templates" / lang
     if not templates_dir.is_dir():
         return ""
+    # 模板文件扩展名按语言：python -> .py，c -> .c，cpp -> .cpp
+    ext = {"python": "py", "c": "c", "cpp": "cpp"}.get(lang, "py")
+    available = sorted(p.stem for p in templates_dir.glob(f"*.{ext}"))
     wanted: list[str] = []
     for pattern, tpl in TASK_TEMPLATE_HINTS:
         if len(wanted) >= max_templates:
             break
-        if re.search(pattern, task_description, re.IGNORECASE) and tpl not in wanted:
+        if re.search(pattern, task_description, re.IGNORECASE) and tpl in available:
             wanted.append(tpl)
     if not wanted:
-        wanted = ["db_query"]  # 默认给一个最通用的示例
+        wanted = available[:1]  # 默认给第一个可用示例（python 下即 db_query）
 
     parts = []
     for tpl in wanted:
-        p = templates_dir / f"{tpl}.py"
+        p = templates_dir / f"{tpl}.{ext}"
         if not p.is_file():
             continue
         code = p.read_text(encoding="utf-8").strip()
-        parts.append(f"### 安全示例：{tpl}\n```{language}\n{code}\n```")
+        parts.append(f"### 安全示例：{tpl}\n```{lang}\n{code}\n```")
     return "\n\n".join(parts)
 
 
@@ -125,7 +154,7 @@ def build_prompts(
 
     返回 (system_prompt, user_prompt)。
     """
-    lang = language.lower()
+    lang = normalize_language(language)
     rules = load_rules_for_prompt(lang, rules_dir, blacklist_dir)
 
     sections = [SYSTEM_PROMPT_HEADER]

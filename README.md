@@ -162,16 +162,21 @@ Secure-Vibe/
 │   ├── repair_loop.py         # ④b 混合修复循环
 │   └── logger.py              # ⑤ JSONL 日志
 ├── rules/
-│   ├── general.yaml           # 通用规则（8 条：密钥/SQL拼接/弱随机/弱哈希/TLS/JWT...）
+│   ├── general.yaml           # 通用规则（8 条：密钥/SQL拼接/弱随机/弱哈希/TLS/JWT...，三语言共享）
 │   ├── python.yaml            # Python 规则（10 条：eval/os.system/shell=True/pickle...）
+│   ├── c.yaml                 # C 规则（7 条：system/sprintf/strcpy/格式字符串/scanf/tmpnam...）
+│   ├── cpp.yaml               # C++ 规则（2 条：std:: 不安全函数/拼接命令；继承 C 规则）
 │   └── cwe_reference.yaml     # CWE 参考知识库（21 条，可由 tools/mine_cwe_rules.py 扩充）
-├── blacklist/python.yaml      # 硬禁用黑名单（4 条）
-├── templates/python/          # 安全模板（5 个）
+├── blacklist/python.yaml      # Python 硬禁用黑名单（5 条）
+├── blacklist/c.yaml           # C/C++ 硬禁用黑名单（2 条：gets/system变量命令）
+├── templates/python/          # Python 安全模板（7 个）
 │   ├── db_query.py            #    参数化 SQL
 │   ├── password_hash.py       #    PBKDF2 密码哈希
 │   ├── secure_token.py        #    secrets 安全 token
 │   ├── auth.py                #    安全登录接口
 │   └── file_upload.py         #    安全文件上传
+├── templates/c/               # C 安全模板（snprintf/fgets/execv）
+├── templates/cpp/             # C++ 安全模板（std::string/getline）
 ├── tools/
 │   ├── mine_cwe_rules.py      # 从 GHSA-CySec 挖掘 CWE→修复映射；--from-logs 挖漏检模式
 │   ├── run_evaluation.py      # 专业级评测（--local 离线基线 / SecurityEval）
@@ -179,7 +184,7 @@ Secure-Vibe/
 │   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
 │   ├── server_smoke.py        # HTTP 服务冒烟测试
 │   └── llm_e2e.py             # 真实 LLM 端到端（--backend mock 离线自检）
-├── tests/                     # 92 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复）
+├── tests/                     # 119 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复 + C/C++）
 ├── docs/
 │   ├── log_format.md          # 日志格式规范
 │   └── evaluation.md          # 专业级评测指南
@@ -188,7 +193,7 @@ Secure-Vibe/
 
 ## 如何扩展规则（无需改动代码）
 
-在 `rules/python.yaml`（或 `general.yaml`）中新增一个列表项即可：
+在 `rules/python.yaml`（或 `general.yaml`、`c.yaml`、`cpp.yaml`）中新增一个列表项即可：
 
 ```yaml
 - id: PY-011                       # 唯一 ID

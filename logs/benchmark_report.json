@@ -1,13 +1,18 @@
 {
  "benchmark": "local_builtin",
  "source": "tests/test_validator.py (手构用例集)",
- "malicious_samples": 20,
- "safe_samples": 20,
+ "malicious_samples": 32,
+ "safe_samples": 22,
  "detection_rate": 1.0,
  "false_positive_rate": 0.0,
- "avg_latency_ms": 0.164,
- "max_latency_ms": 0.317,
+ "avg_latency_ms": 0.23,
+ "max_latency_ms": 0.794,
  "per_rule": {
+  "BL-005": {
+   "total": 3,
+   "detected": 3,
+   "rate": 1.0
+  },
   "GEN-001": {
    "total": 4,
    "detected": 4,
@@ -23,9 +28,29 @@
    "detected": 2,
    "rate": 1.0
   },
+  "GEN-004": {
+   "total": 2,
+   "detected": 2,
+   "rate": 1.0
+  },
   "GEN-005": {
    "total": 4,
    "detected": 4,
+   "rate": 1.0
+  },
+  "GEN-006": {
+   "total": 1,
+   "detected": 1,
+   "rate": 1.0
+  },
+  "GEN-007": {
+   "total": 1,
+   "detected": 1,
+   "rate": 1.0
+  },
+  "GEN-008": {
+   "total": 2,
+   "detected": 2,
    "rate": 1.0
   },
   "PY-001": {
@@ -46,6 +71,21 @@
   "PY-004": {
    "total": 2,
    "detected": 2,
+   "rate": 1.0
+  },
+  "PY-005": {
+   "total": 1,
+   "detected": 1,
+   "rate": 1.0
+  },
+  "PY-008": {
+   "total": 1,
+   "detected": 1,
+   "rate": 1.0
+  },
+  "PY-010": {
+   "total": 1,
+   "detected": 1,
    "rate": 1.0
   }
  },

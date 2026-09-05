@@ -1,6 +1,6 @@
 ---
 name: secure-vibe
-description: 生成时安全（Secure by Generation）：写 Python 代码之前注入安全规则，生成后立即校验，违规自动修复（最多 3 次），全程记日志。仅当用户要求编写或修改 Python 代码（脚本、API、数据库操作等）时使用。用法：先 `python cli.py context` 获取安全规则，再写代码，写完立即 `python cli.py validate` 校验，未通过按 fix_hint 修复，最后 `python cli.py log` 记录。
+description: 生成时安全（Secure by Generation）：写 Python/C/C++ 代码之前注入安全规则，生成后立即校验，违规自动修复（最多 3 次），全程记日志。仅当用户要求编写或修改代码（Python、C、C++ 的脚本、API、数据库操作等）时使用。用法：先 `python cli.py context` 获取安全规则，再写代码，写完立即 `python cli.py validate` 校验，未通过按 fix_hint 修复，最后 `python cli.py log` 记录。
 ---
 
 # Secure-Vibe — 生成时安全编码技能
@@ -9,16 +9,25 @@ description: 生成时安全（Secure by Generation）：写 Python 代码之前
 
 ## 适用与不适用
 
-- 适用：编写或修改 **Python** 代码，尤其是涉及 SQL、命令执行、密钥、哈希、反序列化等敏感操作。
-- 不适用：阅读/解释代码、纯问答、写文档，以及**非 Python 语言**（规则引擎目前仅覆盖 Python）。
-- 非 Python 任务：说明暂不覆盖，可作通用口头提醒（如密钥不入库），但不执行 `validate`。
+- 适用语言：**Python / C / C++**（`--language` 取值：`python`、`c`、`cpp`；C++ 写 `cpp` 或 `C++` 均可）。
+- 各语言覆盖：通用安全规则（密钥/SQL/明文 HTTP/弱哈希/JWT/TLS）三语言共享；语言特有规则见下表。
+- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Java/Go/JS 等暂未覆盖，规则引擎会退化为仅通用规则）。
+- 非 C/Python 任务：说明暂不支持该语言的完整规则集，可作通用口头提醒（如密钥不入库），不要用错误的 `--language` 调 `validate`。
+
+### 语言特有检测能力
+
+| 语言 | 特有规则（通用规则之外） |
+|------|--------------------------|
+| python | eval/exec、os.system、shell=True、pickle/yaml 反序列化、input 污点追踪（AST 引擎） |
+| c | system/popen、sprintf、strcpy/strcat、rand、非常量格式字符串、scanf %s、tmpnam/mktemp |
+| cpp | 继承全部 C 规则 + std:: 不安全函数、字符串拼接构造命令 |
 
 ## 工作流（每次写代码必须完整执行）
 
 ### 第 1 步：加载安全上下文（写代码之前）
 
 ```bash
-python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language python --framework "<框架>"
+python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language <python|c|cpp> --framework "<框架>"
 ```
 
 阅读返回 JSON 中的 `system_prompt`（安全规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。这些规则是硬约束，你生成的代码必须逐条遵守。
@@ -36,7 +45,7 @@ python "<skill_dir>/cli.py" context --task "<用户任务描述>" --language pyt
 ### 第 3 步：立即校验（毫秒级，必须执行）
 
 ```bash
-python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language python
+python "<skill_dir>/cli.py" validate --file <你写的代码文件> --language <python|c|cpp>
 ```
 
 - exit 0 → 通过，进入第 5 步
@@ -76,7 +85,7 @@ python "<skill_dir>/cli.py" missed --pattern "<模式描述或代码片段>" --n
 
 ## 输入与输出约定
 
-- 输入：`--task` 必填（一句话描述任务）；`--language` 默认 `python`，本技能仅支持 python；`--framework` 可选（如 `fastapi`/`flask`，无则省略）。
+- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`，无则省略）。
 - `context` 输出 JSON：关键字段为 `system_prompt`（规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。
 - `validate` 输出 JSON：`passed`、`violations`（每条含 `rule_id`/`line`/`severity`/`fix_hint`）、`summary`、`syntax_error`（语法错误时非空）、`repair_instruction`。
 - `severity` 三档：`high` / `medium` / `low`。

@@ -328,6 +328,18 @@ def cmd_selftest(args) -> int:
         checks["detects_eval"] = (not r1.passed) and any(x.rule_id == "PY-001" for x in r1.violations)
         r2 = v.validate("import secrets\ntoken = secrets.token_urlsafe(32)")
         checks["safe_code_passes"] = r2.passed
+        # C 语言规则自检
+        vc = Validator(language="c")
+        checks["c_rules_loaded"] = sum(1 for x in vc.rules if x.id.startswith(("C-", "BLC-")))
+        r_c = vc.validate('char buf[16];\nsprintf(buf, "%s", name);')
+        checks["detects_c_sprintf"] = (not r_c.passed) and any(x.rule_id == "C-002" for x in r_c.violations)
+        r_c_safe = vc.validate('printf("hello %d", 42);\nreturn 0;')
+        checks["c_safe_passes"] = r_c_safe.passed
+        # C++ 规则自检（含继承的 C 规则）
+        vpp = Validator(language="cpp")
+        checks["cpp_rules_loaded"] = len(vpp.rules)
+        r_pp = vpp.validate('std::strcpy(dst, src);')
+        checks["detects_cpp_strcpy"] = (not r_pp.passed) and any(x.rule_id == "CPP-001" for x in r_pp.violations)
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             lg = SecureLogger(log_dir=Path(td))
@@ -336,7 +348,9 @@ def cmd_selftest(args) -> int:
         ref = (PROJECT_ROOT / "rules" / "cwe_reference.yaml").is_file()
         checks["cwe_reference"] = ref
         ok = all([checks["rules_loaded"] > 0, checks["detects_eval"],
-                  checks["safe_code_passes"], checks["log_writable"]])
+                  checks["safe_code_passes"], checks["detects_c_sprintf"],
+                  checks["c_safe_passes"], checks["detects_cpp_strcpy"],
+                  checks["log_writable"]])
         print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
         return 0 if ok else 1
     except Exception as exc:

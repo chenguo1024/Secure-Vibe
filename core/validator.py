@@ -26,6 +26,40 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from core.taint import SINK_FIX_HINTS, SINK_MESSAGES, TAINT_CWE, find_tainted_sinks  # noqa: E402
 
+# ---------------------------------------------------------------------------
+# 多语言支持
+# ---------------------------------------------------------------------------
+
+# 语言别名归一化：用户写 c++/C++/cxx 时统一为 cpp
+LANGUAGE_ALIASES = {
+    "c++": "cpp",
+    "cxx": "cpp",
+    "cc": "cpp",
+    "py": "python",
+    "py3": "python",
+}
+
+# 语言继承链：cpp 加载 c.yaml（C 代码基本是合法 C++，C 规则对 C++ 同样适用）
+LANGUAGE_INHERITS = {
+    "cpp": ["c"],
+}
+
+
+def normalize_language(language: str) -> str:
+    """语言别名归一化：'C++'/'c++' -> 'cpp'，'Python' -> 'python'。"""
+    return LANGUAGE_ALIASES.get(language.strip().lower(), language.strip().lower())
+
+
+def language_chain(language: str) -> list[str]:
+    """规则加载链：general + 继承语言 + 本语言。如 cpp -> [general, c, cpp]。"""
+    chain = ["general"]
+    for base in LANGUAGE_INHERITS.get(language, []):
+        chain.append(base)
+    chain.append(language)
+    # 去重保持顺序
+    seen: set[str] = set()
+    return [x for x in chain if not (x in seen or seen.add(x))]
+
 
 # ---------------------------------------------------------------------------
 # 数据结构
@@ -158,7 +192,7 @@ class Validator:
         ignore_rules: Optional[list[str]] = None,
         taint_analysis: bool = True,
     ):
-        self.language = language.lower()
+        self.language = normalize_language(language)
         self.taint_analysis = taint_analysis and self.language == "python"
         rules_dir = Path(rules_dir) if rules_dir else PROJECT_ROOT / "rules"
         blacklist_dir = Path(blacklist_dir) if blacklist_dir else PROJECT_ROOT / "blacklist"
@@ -175,11 +209,11 @@ class Validator:
 
     @staticmethod
     def _load_yaml_files(directory: Path, language: str) -> list[dict[str, Any]]:
-        """加载 <dir>/general.yaml 和 <dir>/<language>.yaml，返回规则列表。"""
+        """按语言链加载 <dir>/{general,继承语言,language}.yaml，返回规则列表。"""
         items: list[dict[str, Any]] = []
         if not directory.is_dir():
             return items
-        for name in ("general", language):
+        for name in language_chain(language):
             path = directory / f"{name}.yaml"
             if not path.is_file():
                 continue
@@ -195,12 +229,14 @@ class Validator:
         violations: list[Violation] = []
         parse_error = ""
 
-        # 引擎1: AST 分析（仅当代码可解析时）
+        # 引擎1: AST 分析（仅 Python；非 Python 语言跳过 AST/污点引擎，走正则引擎）
         tree = None
-        try:
-            tree = ast.parse(code)
-        except SyntaxError as exc:
-            parse_error = f"syntax_error: line {exc.lineno}: {exc.msg}"
+        parse_error = ""
+        if self.language == "python":
+            try:
+                tree = ast.parse(code)
+            except SyntaxError as exc:
+                parse_error = f"syntax_error: line {exc.lineno}: {exc.msg}"
 
         if tree is not None:
             for rule in self.rules:

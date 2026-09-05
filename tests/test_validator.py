@@ -168,7 +168,9 @@ def test_validation_is_fast(v: Validator):
     t0 = time.perf_counter()
     v.validate(big_code)
     elapsed = (time.perf_counter() - t0) * 1000
-    assert elapsed < 200, f"校验 500 行代码耗时 {elapsed:.0f}ms，超出预期"
+    # 500 行纯函数无违规代码；阈值放宽到 400ms 以容忍 CI/桌面机的负载波动
+    # （实测本机 150-260ms 区间波动，原 200ms 阈值贴边导致 flaky）
+    assert elapsed < 400, f"校验 500 行代码耗时 {elapsed:.0f}ms，超出预期"
 
 
 def test_custom_ignore_rules():
