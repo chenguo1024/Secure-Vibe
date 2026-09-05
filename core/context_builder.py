@@ -26,8 +26,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 try:
     from core.validator import language_chain, normalize_language
 except ImportError:  # 独立使用 context_builder 时的兜底
-    LANGUAGE_ALIASES = {"c++": "cpp", "cxx": "cpp", "cc": "cpp", "py": "python", "py3": "python"}
-    LANGUAGE_INHERITS = {"cpp": ["c"]}
+    LANGUAGE_ALIASES = {
+        "c++": "cpp", "cxx": "cpp", "cc": "cpp", "py": "python", "py3": "python",
+        "javascript": "js", "htm": "html", "golang": "go",
+        "bash": "sh", "shell": "sh", "zsh": "sh",
+        "docker": "dockerfile", "containerfile": "dockerfile",
+        "k8s": "kubernetes", "kube": "kubernetes", "tf": "terraform", "hcl": "terraform",
+    }
+    LANGUAGE_INHERITS = {"cpp": ["c"], "php": ["html", "js"], "html": ["js"]}
 
     def normalize_language(language: str) -> str:
         return LANGUAGE_ALIASES.get(language.strip().lower(), language.strip().lower())
@@ -121,7 +127,10 @@ def _few_shot(language: str, task_description: str,
         return ""
     # 模板文件扩展名按语言：python -> .py，c -> .c，cpp -> .cpp，php/html/js 同名
     ext = {"python": "py", "c": "c", "cpp": "cpp",
-           "php": "php", "html": "html", "js": "js"}.get(lang, "py")
+           "php": "php", "html": "html", "js": "js",
+           "go": "go", "sh": "sh",
+           "dockerfile": "dockerfile", "kubernetes": "yaml",
+           "terraform": "tf"}.get(lang, "py")
     available = sorted(p.stem for p in templates_dir.glob(f"*.{ext}"))
     wanted: list[str] = []
     for pattern, tpl in TASK_TEMPLATE_HINTS:

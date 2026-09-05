@@ -39,6 +39,16 @@ LANGUAGE_ALIASES = {
     "py3": "python",
     "javascript": "js",
     "htm": "html",
+    "golang": "go",
+    "bash": "sh",
+    "shell": "sh",
+    "zsh": "sh",
+    "docker": "dockerfile",
+    "containerfile": "dockerfile",
+    "k8s": "kubernetes",
+    "kube": "kubernetes",
+    "tf": "terraform",
+    "hcl": "terraform",
 }
 
 # 语言继承链：

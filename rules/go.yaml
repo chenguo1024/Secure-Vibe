@@ -1,0 +1,100 @@
+# rules/go.yaml — Go 语言特有安全规则（正则引擎；golang 别名归一化为 go）
+# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+
+- id: GO-001
+  name: go_shell_command
+  severity: high
+  cwe: CWE-78
+  message: 经 shell 执行命令（exec.Command 调 sh/bash，命令注入风险）
+  fix_hint: 避免经 shell 包裹命令；需要外部程序时 exec.Command(程序, args...) 参数列表直传（Go 默认不经过 shell），用户输入作为单独参数，绝不拼接命令字符串。
+  match:
+    regex:
+      - >-
+        (?i)exec\.Command(?:Context)?\s*\(\s*["'](sh|bash|/bin/sh|/bin/bash|sh|csh|ksh|zsh|cmd)\b
+    exclude_regex:
+      - >-
+        CommandContext\s*\(\s*[^)]*["'](false|true)
+
+- id: GO-002
+  name: go_sql_concat
+  severity: high
+  cwe: CWE-89
+  message: 数据库查询语句拼接/格式化（SQL 注入风险）
+  fix_hint: 使用占位符 "?" 传参（db.Query("... WHERE id = ?", id)）；禁止 fmt.Sprintf 或 + 拼接用户输入到 SQL。
+  match:
+    regex:
+      - >-
+        (?i)fmt\.Sprintf\s*\([^)]*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)\b
+      - >-
+        (?i)(\.Query|\.QueryRow|\.QueryContext|\.Exec|\.ExecContext)\s*\([^)]*\+
+      - >-
+        (?i)["'](SELECT|INSERT|UPDATE|DELETE)\b[^"']*["']\s*\+\s*
+    exclude_regex:
+      - >-
+        \?\s*,\s*
+
+- id: GO-003
+  name: go_ssrf_user_url
+  severity: high
+  cwe: CWE-918
+  message: HTTP 请求 URL 来自用户输入（SSRF 风险）
+  fix_hint: 目标 URL 做 DNS 白名单 + 私网地址段过滤（含 169.254.169.254）；禁止用户输入直接作为请求地址。
+  match:
+    regex:
+      - >-
+        (?i)http\.(Get|Post|PostForm|Head|NewRequest(?:WithContext)?)\s*\([^)]*(\+\s*\w+|\w+\s*\+\s*)
+      - >-
+        (?i)http\.(Get|Post|Head|NewRequest)\s*\([^)]*(FormValue|URL\.Query|r\.URL|Params|Get\()
+    exclude_regex: []
+
+- id: GO-004
+  name: go_unsafe_template_html
+  severity: high
+  cwe: CWE-79
+  message: 使用 template.HTML/template.JS 等不安全类型直接输出（XSS 风险）
+  fix_hint: html/template 默认已转义，避免把用户输入强转 template.HTML/JS/URL/Srcset；HTML 输出用 text/template 仅用于非 HTML 场景。
+  match:
+    regex:
+      - >-
+        (?i)template\.(HTML|JS|URL|CSS|Srcset|HTMLAttr)\s*\(
+      - >-
+        (?i)[\w.]*\b(HTML|JS|URL|CSS)\s*\(\s*[^)]*(FormValue|URL\.Query|Param)
+    exclude_regex: []
+
+- id: GO-005
+  name: go_math_rand_security
+  severity: medium
+  cwe: CWE-338
+  message: 使用 math/rand 生成安全相关值（可预测随机数）
+  fix_hint: 安全用途（token、会话 ID）用 crypto/rand（rand.Read/rand.Text）；math/rand 仅用于模拟等非安全场景。
+  match:
+    regex:
+      - >-
+        (?i)\b(rand\.Intn|rand\.Int(31|63|64)?|rand\.Uint32|rand\.Uint64|rand\.Float32|rand\.Float64)\s*\(
+    exclude_regex:
+      - >-
+        crypto/rand|math/rand/v2
+
+- id: GO-006
+  name: go_formvalue_to_sink
+  severity: high
+  cwe: CWE-22
+  message: 表单/URL 参数直接进入文件/命令调用（路径穿越/参数注入风险）
+  fix_hint: r.FormValue/r.URL.Query().Get 的返回值先做白名单校验与类型约束，再进入 exec.Command/os.Open/os.WriteFile。
+  match:
+    regex:
+      - >-
+        (?i)(exec\.Command|os\.(Open|ReadFile|WriteFile|Rename|Remove)|ioutil\.ReadFile)\s*\([^)]*(FormValue|URL\.Query\(\)\.Get|r\.URL\.Path|r\.URL\.Query)
+    exclude_regex: []
+
+- id: GO-007
+  name: go_insecure_tls
+  severity: medium
+  cwe: CWE-295
+  message: 跳过 TLS 证书校验（InsecureSkipVerify）
+  fix_hint: "保持默认的证书校验；自签名证书加入信任池而不是 InsecureSkipVerify: true。"
+  match:
+    regex:
+      - >-
+        (?i)InsecureSkipVerify\s*:\s*true
+    exclude_regex: []

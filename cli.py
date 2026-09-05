@@ -357,6 +357,24 @@ def cmd_selftest(args) -> int:
         vjs = Validator(language="js")
         r_js = vjs.validate('eval(userInput);')
         checks["detects_js_eval"] = (not r_js.passed) and any(x.rule_id == "JS-001" for x in r_js.violations)
+        # Go / Shell / IaC 规则自检
+        vgo = Validator(language="go")
+        r_go = vgo.validate('db.Query("SELECT * FROM t WHERE id=" + id)')
+        checks["detects_go_sql_concat"] = (not r_go.passed) and any(x.rule_id == "GO-002" for x in r_go.violations)
+        vsh = Validator(language="sh")
+        r_sh = vsh.validate('curl -s https://x.sh | sh')
+        checks["detects_sh_curl_pipe"] = (not r_sh.passed) and any(x.rule_id == "SH-001" for x in r_sh.violations)
+        vdk = Validator(language="dockerfile")
+        r_dk = vdk.validate('FROM alpine:3.20\nUSER root')
+        checks["detects_docker_root"] = (not r_dk.passed) and any(x.rule_id == "DOCK-001" for x in r_dk.violations)
+        vtf = Validator(language="terraform")
+        r_tf = vtf.validate('resource "aws_security_group" "x" { ingress { cidr_blocks = ["0.0.0.0/0"] } }')
+        checks["detects_tf_open_cidr"] = (not r_tf.passed) and any(x.rule_id == "TF-001" for x in r_tf.violations)
+        vpy2 = Validator(language="python")
+        r_ssrf = vpy2.validate('requests.get(user_url)')
+        checks["detects_py_ssrf"] = (not r_ssrf.passed) and any(x.rule_id == "PY-011" for x in r_ssrf.violations)
+        r_ml = vpy2.validate('torch.load(model_path)')
+        checks["detects_py_ml_deser"] = (not r_ml.passed) and any(x.rule_id == "PY-021" for x in r_ml.violations)
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             lg = SecureLogger(log_dir=Path(td))
@@ -369,6 +387,9 @@ def cmd_selftest(args) -> int:
                   checks["c_safe_passes"], checks["detects_cpp_strcpy"],
                   checks["detects_php_superglobal_exec"], checks["php_safe_passes"],
                   checks["detects_html_js_url"], checks["detects_js_eval"],
+                  checks["detects_go_sql_concat"], checks["detects_sh_curl_pipe"],
+                  checks["detects_docker_root"], checks["detects_tf_open_cidr"],
+                  checks["detects_py_ssrf"], checks["detects_py_ml_deser"],
                   checks["log_writable"]])
         print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
         return 0 if ok else 1

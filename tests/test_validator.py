@@ -102,8 +102,8 @@ SAFE_CASES = [
     "cfg = yaml.load(f, Loader=yaml.SafeLoader)",
     # JWT 正确校验
     "payload = jwt.decode(token, key, algorithms=['HS256'])",
-    # TLS 默认校验
-    "requests.get(url)  # verify 默认 True",
+    # TLS 默认校验（字面量固定 URL 不被 SSRF 规则误报）
+    "requests.get(\"https://api.example.com/health\")",
     # Flask debug 环境变量控制
     "app.run(debug=os.environ.get('FLASK_DEBUG') == '1')",
     # 注释/字符串中的可疑词不误报

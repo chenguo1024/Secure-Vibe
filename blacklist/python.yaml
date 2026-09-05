@@ -68,3 +68,29 @@
       - >-
         (?i)_*builtins?_*\s*\[["'](eval|exec|open|compile)["']\]
     exclude_regex: []
+
+- id: BL-006
+  name: ml_deserialization_from_untrusted
+  severity: high
+  cwe: CWE-502
+  message: 从网络/用户输入路径加载 ML 模型文件（反序列化 RCE，无商量余地）
+  fix_hint: 禁止 torch.load/joblib.load/read_pickle 加载外部来源文件；模型文件只放可信仓库，加载前核对 SHA256。
+  match:
+    regex:
+      - >-
+        (?i)(torch\.load|joblib\.load|pandas?\.read_pickle|dill\.loads?)\s*\([^)]*(request|urlopen|download|recv|fetch|response|socket|url)
+    exclude_regex: []
+
+- id: BL-007
+  name: ssrf_to_metadata
+  severity: high
+  cwe: CWE-918
+  message: 请求指向云元数据端点（SSRF 直击云凭据，无商量余地）
+  fix_hint: 禁止代码中出现向 169.254.169.254/metadata 等地址发起的请求；外部目标必须 DNS 白名单 + 私网地址过滤。
+  match:
+    regex:
+      - >-
+        (?i)(169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200)
+    exclude_regex:
+      - >-
+        (?i)["']#?\s*(注释|说明|example|安全说明)

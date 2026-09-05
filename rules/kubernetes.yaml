@@ -1,0 +1,67 @@
+# rules/kubernetes.yaml — Kubernetes 清单安全规则（正则引擎；k8s/kube 别名归一化）
+
+- id: K8S-001
+  name: k8s_privileged_container
+  severity: high
+  cwe: CWE-269
+  message: 容器以 privileged 特权模式运行（可访问宿主机设备）
+  fix_hint: "移除 privileged: true；按需只放行具体 capabilities（add: [...]），禁止特权模式。"
+  match:
+    regex:
+      - >-
+        (?i)privileged\s*:\s*true
+    exclude_regex: []
+
+- id: K8S-002
+  name: k8s_hostpath_volume
+  severity: high
+  cwe: CWE-269
+  message: 挂载 hostPath 宿主目录（容器逃逸/宿主文件读写）
+  fix_hint: 改用 emptyDir/PVC；确需 hostPath 时限定只读子目录并审计。
+  match:
+    regex:
+      - >-
+        (?i)hostPath\s*:
+    exclude_regex: []
+
+- id: K8S-003
+  name: k8s_host_network
+  severity: high
+  cwe: CWE-269
+  message: 使用 hostNetwork/hostPID/hostIPC（共享宿主机命名空间）
+  fix_hint: "保持默认隔离；移除 hostNetwork/hostPID/hostIPC: true。"
+  match:
+    regex:
+      - >-
+        (?i)(hostNetwork|hostPID|hostIPC)\s*:\s*true
+    exclude_regex: []
+
+- id: K8S-004
+  name: k8s_run_as_root
+  severity: medium
+  cwe: CWE-269
+  message: 容器以 root 运行且未禁用特权提升
+  fix_hint: "securityContext 设 runAsNonRoot: true、runAsUser 非 0、allowPrivilegeEscalation: false、readOnlyRootFilesystem: true。"
+  match:
+    regex:
+      - >-
+        (?i)runAsUser\s*:\s*0
+      - >-
+        (?i)allowPrivilegeEscalation\s*:\s*true
+      - >-
+        (?i)runAsNonRoot\s*:\s*false
+    exclude_regex: []
+
+- id: K8S-005
+  name: k8s_secret_env_plaintext
+  severity: medium
+  cwe: CWE-522
+  message: Secret 整体以 env 方式暴露（更易被日志/调试泄露）
+  fix_hint: 用 secretKeyRef/envFrom 按需引用单个键；敏感数据避免放进 env（用 volume mount 或运行时 secret provider）。
+  match:
+    regex:
+      - >-
+        (?i)secretKeyRef\s*:\s*\{\s*name\s*:\s*\S+[\s\S]{0,80}?key\s*:\s*\S+
+    exclude_regex:
+      - >-
+        optional
