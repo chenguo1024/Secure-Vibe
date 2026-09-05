@@ -1,5 +1,10 @@
 # Secure-Vibe — 生成时安全的代码生成 Skill
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Languages](https://img.shields.io/badge/Languages-13-green)
+![Rules](https://img.shields.io/badge/Rules-110-orange)
+![Tests](https://img.shields.io/badge/Tests-225-brightgreen)
+
 在 vibe-coding（AI 自由生成代码）场景中，**在代码生成过程中就引导模型写出安全代码**——
 不是"先生成后检查"，而是：安全上下文注入 → 生成 → 毫秒级校验 → 自动修复循环。
 
