@@ -1,5 +1,0 @@
-{
- "getattr(builtins, \"eval\")(x)": {
-  "note": "e2e test"
- }
-}
