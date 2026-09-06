@@ -1,19 +1,20 @@
-# Secure-Vibe 日志格式说明
+# Secure-Vibe Log Format
 
-日志输出为 **JSON Lines** 格式（每行一条完整 JSON 记录），默认写入 `logs/<YYYY-MM-DD>.jsonl`（按日期分文件）。UTF-8 编码，`ensure_ascii=False`。
+Logs are output as **JSON Lines** (one complete JSON record per line), written by default to
+`logs/<YYYY-MM-DD>.jsonl` (one file per day). UTF-8 encoded, `ensure_ascii=False`.
 
-记录分三类事件（`event` 字段区分）：
+Records fall into three event types (distinguished by the `event` field):
 
-## 1. `generation` — 一次完整生成过程
+## 1. `generation` — one complete generation process
 
 ```json
 {
   "timestamp": "2026-09-02T14:30:00.123",
   "event": "generation",
-  "task_description": "实现用户登录接口",
+  "task_description": "Implement a user login API",
   "language": "python",
   "framework": "Flask",
-  "context": "需要支持 JWT",
+  "context": "Needs to support JWT",
   "llm_backend": "MockBackend",
   "rounds": [
     {
@@ -27,23 +28,23 @@
           "line": 5,
           "column": 4,
           "snippet": "result = eval(user_input)",
-          "message": "使用 eval/exec 动态执行代码（代码注入风险）",
+          "message": "Using eval/exec to execute code dynamically (code injection risk)",
           "severity": "high",
-          "fix_hint": "JSON 用 json.loads；表达式求值用 ast.literal_eval",
+          "fix_hint": "Use json.loads for JSON; use ast.literal_eval for expression evaluation",
           "cwe": "CWE-95",
           "checker": "ast",
           "template": "safe_eval_alt"
         }
       ],
       "elapsed_ms": 1.234,
-      "code": "<该轮完整代码，受 log_code 开关控制>"
+      "code": "<full code for this round, controlled by the log_code switch>"
     }
   ],
-  "first_generation_code": "<首次生成代码全文>",
+  "first_generation_code": "<full text of first generated code>",
   "total_retries": 2,
   "llm_calls": 3,
   "final_verdict": "passed",
-  "final_code": "<最终交付代码全文>",
+  "final_code": "<full text of final delivered code>",
   "report": "",
   "total_elapsed_ms": 45.678,
   "manually_modified": false,
@@ -51,65 +52,65 @@
 }
 ```
 
-### 字段说明
+### Field Description
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `timestamp` | ISO 8601 | 记录时间（毫秒精度） |
+| `timestamp` | ISO 8601 | Record time (millisecond precision) |
 | `event` | string | `generation` / `missed_pattern` / `rule_promoted` |
-| `task_description` | string | 用户任务描述 |
-| `language` / `framework` / `context` | string | 生成上下文 |
-| `llm_backend` | string | 使用的后端类名（MockBackend/OpenAIBackend/...） |
-| `rounds[]` | array | 每轮明细：轮号、动作、校验结果、违规列表、耗时、代码 |
-| `rounds[].action` | string | `generate`（首生）/ `deterministic_fix`（模板确定性替换）/ `llm_repair`（LLM 修复） |
-| `first_generation_code` | string | 首次生成代码（受 `log_code` 开关控制，关闭时为 `<N chars>`） |
-| `total_retries` | int | 修复重试次数（不含首次生成） |
-| `llm_calls` | int | LLM 总调用次数 |
-| `final_verdict` | string | `passed` / `failed` / `needs_human_review`（重试超限） |
-| `final_code` | string | 最终交付代码 |
-| `report` | string | 失败时的完整漏洞报告（Markdown） |
-| `total_elapsed_ms` | float | 全流程耗时 |
-| `manually_modified` | bool | 用户是否手动修改了生成的代码 |
-| `manual_diff` | string | 人工修改的 unified diff（`compute_manual_diff()` 生成） |
+| `task_description` | string | User task description |
+| `language` / `framework` / `context` | string | Generation context |
+| `llm_backend` | string | Backend class name used (MockBackend/OpenAIBackend/...) |
+| `rounds[]` | array | Details of each round: round number, action, validation result, violation list, elapsed time, code |
+| `rounds[].action` | string | `generate` (first generation) / `deterministic_fix` (deterministic template replacement) / `llm_repair` (LLM repair) |
+| `first_generation_code` | string | First generated code (controlled by the `log_code` switch; `<N chars>` when disabled) |
+| `total_retries` | int | Number of repair retries (excluding the first generation) |
+| `llm_calls` | int | Total number of LLM calls |
+| `final_verdict` | string | `passed` / `failed` / `needs_human_review` (retry limit exceeded) |
+| `final_code` | string | Final delivered code |
+| `report` | string | Full vulnerability report on failure (Markdown) |
+| `total_elapsed_ms` | float | Total elapsed time for the whole process |
+| `manually_modified` | bool | Whether the user manually modified the generated code |
+| `manual_diff` | string | Unified diff of manual modifications (produced by `compute_manual_diff()`) |
 
-### 隐私控制（config.yaml → logging）
+### Privacy Controls (config.yaml → logging)
 
-- `mask_secrets: true`：日志写入前对疑似密钥（`sk-...`、`AKIA...`、赋值字符串）自动打码。
-- `log_code: false`：不记录代码全文，只记录字符数。
-- `log_inputs: true`：是否记录任务描述与上下文。
+- `mask_secrets: true`: automatically mask suspected secrets (`sk-...`, `AKIA...`, assignment strings) before writing logs.
+- `log_code: false`: do not record full code, only the character count.
+- `log_inputs: true`: whether to record the task description and context.
 
-## 2. `missed_pattern` — 漏检/被绕过的新攻击模式（规则迭代闭环素材）
+## 2. `missed_pattern` — new attack patterns that were missed/bypassed (material for the rule iteration loop)
 
 ```json
 {
   "timestamp": "2026-09-02T15:00:00.000",
   "event": "missed_pattern",
   "pattern": "getattr(builtins, 'eval')(x)",
-  "source_code": "<相关代码片段>",
-  "note": "校验器漏检的动态属性调用",
+  "source_code": "<related code snippet>",
+  "note": "Dynamic attribute call missed by the validator",
   "severity": "medium",
   "status": "pending_review"
 }
 ```
 
-人工审核后将新规则写入 `rules/*.yaml` 并调用 `log_rule_promoted()` 记录升级动作。
+After human review, write the new rule into `rules/*.yaml` and call `log_rule_promoted()` to record the promotion action.
 
-## 3. `rule_promoted` — 漏检模式升级为正式规则的审核记录
+## 3. `rule_promoted` — audit record of promoting a missed detection pattern to an official rule
 
 ```json
 {
   "timestamp": "2026-09-02T16:00:00.000",
   "event": "rule_promoted",
   "rule_id": "PY-011",
-  "rule_yaml": "<新规则的 YAML 定义>",
-  "note": "来自 2026-09-02 的 missed_pattern 审核"
+  "rule_yaml": "<YAML definition of the new rule>",
+  "note": "From the missed_pattern review on 2026-09-02"
 }
 ```
 
-## 分析用法
+## Analysis Usage
 
 ```bash
-# 统计每日生成量与通过率
+# Count daily generations and pass rate
 python -c "
 import json, collections
 c = collections.Counter()
@@ -120,10 +121,10 @@ for line in open('logs/2026-09-02.jsonl', encoding='utf-8'):
 print(c)
 "
 
-# 找出所有需人工修复的记录
+# Find all records that need human repair
 grep needs_human_review logs/*.jsonl
 
-# 规则命中率排行（迭代规则的依据）
+# Rule hit ranking (basis for iterating rules)
 python -c "
 import json, collections
 c = collections.Counter()

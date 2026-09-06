@@ -1,4 +1,4 @@
-"""tests/test_taint.py — 轻量污点追踪测试."""
+"""tests/test_taint.py — lightweight taint analysis tests."""
 import sys
 from pathlib import Path
 
@@ -20,7 +20,7 @@ def test_simple_command_injection_taint():
     code = "import os\ncmd = input('host: ')\nos.system(cmd)"
     r, rule_ids, checkers = rules_and_checkers(code)
     assert "PY-002" in rule_ids
-    # 污点版规则应存在（不是只有浅层正则命中）
+    # the taint variant must exist (not just the shallow regex hit)
     assert any(v.checker == "taint" for v in r.violations)
 
 
@@ -28,7 +28,7 @@ def test_indirect_variable_flow():
     code = "import os\npayload = sys.argv[1]\ncmd = 'ping ' + payload\nos.popen(cmd)"
     r, _, _ = rules_and_checkers(code)
     chain = [v for v in r.violations if v.checker == "taint"]
-    assert chain, "应确认污点链条"
+    assert chain, "taint chain should be confirmed"
     assert "sys.argv" in chain[0].message
 
 
@@ -51,7 +51,7 @@ def test_pickle_taint():
 
 
 def test_no_taint_without_source():
-    # 无用户输入来源 → 不应有 taint 版违规（但仍有浅层 os.system 命中）
+    # no user input source -> no taint violation (the shallow os.system hit remains)
     code = "import os\ncmd = 'ls -la'\nos.system(cmd)"
     r, _, checkers = rules_and_checkers(code)
     assert "PY-002" in checkers
@@ -65,7 +65,7 @@ def test_safe_code_no_taint():
 
 
 def test_taint_dedupes_shallow_match():
-    # 同一行既命中浅层 Py-002 又命中污点 → 只保留污点版（不重复同规则同行）
+    # shallow PY-002 plus taint on the same line -> keep only the taint copy (no duplicate of one rule per line)
     code = "import os\nhost = input()\nos.system(host)"
     r, _, _ = rules_and_checkers(code)
     py002 = [v for v in r.violations if v.rule_id == "PY-002"]
@@ -74,14 +74,14 @@ def test_taint_dedupes_shallow_match():
 
 
 def test_sys_stdin_source():
-    # sys.stdin.read() 也是污点源（回归：曾漏检）
+    # sys.stdin.read() is also a taint source (regression: used to be missed)
     code = "import sys\nimport os\ndata = sys.stdin.read()\nos.system(data)"
     r, _, _ = rules_and_checkers(code)
     assert any(v.checker == "taint" and v.rule_id == "PY-002" for v in r.violations)
 
 
 def test_taint_findings_carry_cwe():
-    # 污点 finding 应带 CWE 编号（回归：曾为空字符串）
+    # taint findings must carry the CWE id (regression: used to be empty)
     code = "import os\nname = input()\nos.system(name)"
     r, _, _ = rules_and_checkers(code)
     taint_v = [v for v in r.violations if v.checker == "taint"]

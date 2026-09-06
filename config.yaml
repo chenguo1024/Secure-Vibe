@@ -1,67 +1,67 @@
-# Secure-Vibe 全局配置
-# 所有字段均可通过环境变量 SECURE_VIBE_<大写字段名> 覆盖
+# Secure-Vibe global configuration
+# Every field can be overridden via the environment variable SECURE_VIBE_<UPPERCASED_FIELD>
 
-# LLM 后端设置
+# LLM backend settings
 llm:
-  # backend 可选值:
-  #   session  - 跟随 Agent 自身的 LLM（Skill 安装在 Agent 内时的默认模式，
-  #              生成由 Agent 当前所用模型完成，本 Skill 不调用任何外部 API）
-  #   openai   - 独立运行时直连 OpenAI（需环境变量 OPENAI_API_KEY）
-  #   claude   - 独立运行时直连 Anthropic（需环境变量 ANTHROPIC_API_KEY）
-  #   ollama   - 本地模型（需本地运行 Ollama）
-  #   mock     - 测试用，不联网，返回预置代码
+  # available backend values:
+  #   session  - follows the agent's own LLM (default when the skill is installed inside an agent;
+  #              generation is done by the model the agent uses; this skill calls no external API)
+  #   openai   - direct OpenAI in standalone runs (needs OPENAI_API_KEY)
+  #   claude   - direct Anthropic in standalone runs (needs ANTHROPIC_API_KEY)
+  #   ollama   - local model (needs a local Ollama)
+  #   mock     - for testing: offline, returns preset code
   backend: session
-  model: ""              # 留空使用各后端默认模型
+  model: ""              # leave empty to use each backend's default model
   temperature: 0.2
   max_tokens: 2048
-  timeout: 60            # 单次 LLM 调用超时（秒）
-  base_url: ""           # 自定义 API 地址（Ollama/代理用）
+  timeout: 60            # per-call LLM timeout (seconds)
+  base_url: ""           # custom API base (Ollama / proxy)
 
-# 校验器设置
+# Validator settings
 validator:
-  max_time_ms: 50        # 单次校验允许的最大耗时（毫秒，超出记 warning）
-  taint_analysis: true   # 轻量污点追踪（仅 Python）：确认用户输入直达危险 sink
-  enabled_checkers:      # 留空表示全部启用
-    - ast                # AST 危险调用分析
-    - regex              # 正则黑名单匹配
-    - taint              # 污点数据流分析
-  ignore_rules: []       # 全局忽略的规则 ID，如 ["GEN-004"]
+  max_time_ms: 50        # max time allowed for one validation (ms; logs a warning when exceeded)
+  taint_analysis: true   # lightweight taint analysis (Python only): confirms user input reaching dangerous sinks
+  enabled_checkers:      # empty means all enabled
+    - ast                # AST dangerous-call analysis
+    - regex              # regex blacklist matching
+    - taint              # taint data-flow analysis
+  ignore_rules: []       # globally ignored rule IDs, e.g. ["GEN-004"]
 
-# 修复循环设置
+# Repair-loop settings
 repair:
-  max_retries: 3         # 最大修复轮数
-  strategy: hybrid       # hybrid = 模板确定性替换优先 + LLM 局部重写；llm_only = 全部走 LLM
-  local_rewrite: true    # 只重写违规片段而非整段重新生成
+  max_retries: 3         # maximum repair rounds
+  strategy: hybrid       # hybrid = deterministic template replacement first + LLM local rewrite; llm_only = all via LLM
+  local_rewrite: true    # rewrite only the violating fragment instead of regenerating everything
 
-# 日志设置
+# Logging settings
 logging:
-  dir: logs              # JSONL 输出目录
-  filename_pattern: "%Y-%m-%d.jsonl"   # 按日期分文件
-  log_inputs: true       # 是否记录完整输入（任务描述/上下文）
-  log_code: true         # 是否记录每轮代码全文
-  mask_secrets: true     # 日志中是否对疑似密钥打码
+  dir: logs              # JSONL output directory
+  filename_pattern: "%Y-%m-%d.jsonl"   # one file per date
+  log_inputs: true       # whether to record full inputs (task description/context)
+  log_code: true         # whether to record each round's full code
+  mask_secrets: true     # whether to mask suspected secrets in logs
 
-# 规则目录
+# Rule directories
 rules_dir: rules
 blacklist_dir: blacklist
 templates_dir: templates
 
-# 版本与更新
-version: "1.0.0"          # 与 VERSION 文件保持一致
-# 安装来源仓库（git 管理安装时由 install 脚本自动写入）：
-# 配置后 cli.py version --check 可查询远端最新版本，cli.py update 可拉取更新
-source_repo: ""           # 例: https://github.com/yourname/secure-vibe.git
+# Versioning and updates
+version: "1.0.0"          # keep in sync with the VERSION file
+# Install source repo (written by the install script on git-managed installs):
+# once set, cli.py version --check can query the remote latest version and cli.py update can pull updates
+source_repo: ""           # e.g. https://github.com/yourname/secure-vibe.git
 
-# 专业级评测（可选，论文级基准，默认关闭）
-# SecurityEval 数据集需下载后配置路径；详见 docs/evaluation.md
+# Pro-level evaluation (optional paper-grade benchmark, disabled by default)
+# Download the SecurityEval dataset and configure its path first; see docs/evaluation.md
 evaluation:
   enabled: false
-  # SecurityEval 数据集路径（s2labres/security-eval，需下载）
-  securityeval_path: ""     # 例: D:\datasets\SecurityEval
-  # 评测指标
+  # SecurityEval dataset path (s2labres/security-eval, must be downloaded)
+  securityeval_path: ""     # e.g. D:\datasets\SecurityEval
+  # Evaluation metrics
   metrics:
-    - detection_rate        # 恶意样本检出率（应越高越好）
-    - false_positive_rate   # 安全样本误报率（应越低越好）
-    - repair_success_rate   # 修复循环收敛率
-    - avg_repair_rounds     # 平均修复轮数
-    - avg_latency_ms        # 平均校验耗时
+    - detection_rate        # malicious-sample detection rate (higher is better)
+    - false_positive_rate   # safe-sample false-positive rate (lower is better)
+    - repair_success_rate   # repair-loop convergence rate
+    - avg_repair_rounds     # average repair rounds
+    - avg_latency_ms        # average validation latency

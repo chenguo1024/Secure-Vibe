@@ -1,180 +1,182 @@
-# rules/cwe_reference.yaml — CWE 参考知识库
-# 来源:
-#   1. curated 基线：MITRE CWE 公开标准（本文件，随项目维护）
-#   2. GHSA-CySec 数据集挖掘：python tools/mine_cwe_rules.py <数据集路径>（扩充本文件）
-# 用途:
-#   - cli.py cwe --id CWE-89 查询
-#   - 生成/修复时为 Agent 提供 CWE 背景、修复方向、安全模板引用
+# rules/cwe_reference.yaml — CWE reference knowledge base
+# Sources:
+#   1. curated baseline: the MITRE CWE public standard (this file, maintained with the project)
+#   2. mined from the GHSA-CySec dataset: python tools/mine_cwe_rules.py <dataset path> (extends this file)
+# Purpose:
+#   - cli.py cwe --id CWE-89 lookup
+#   - provides the agent with CWE background, fix directions, and safe-template references during generation/repair
+# Fields 'description'/'fix_direction' are bilingual (EN | ZH); name_zh keeps the Chinese name.
+
 
 cwe:
   - id: CWE-89
     name: sql_injection
     name_zh: SQL 注入
     severity: high
-    description: 用户输入被拼入 SQL 语句，攻击者可篡改查询逻辑、绕过认证、拖库。
-    fix_direction: 参数化查询/预编译语句/ORM 绑定参数；列名等无法参数化的部分用白名单校验。
+    description: "User input concatenated into SQL statements; attackers can alter query logic, bypass auth, or dump the database. | 用户输入被拼入 SQL 语句，攻击者可篡改查询逻辑、绕过认证、拖库。"
+    fix_direction: "Prepared statements / parameterized queries / ORM bound params; whitelist any part that cannot be parameterized (e.g. column names). | 参数化查询/预编译语句/ORM 绑定参数；列名等无法参数化的部分用白名单校验。"
     template: db_query
-    related_rules: [GEN-005]
+    related_rules: ['GEN-005']
 
   - id: CWE-78
     name: os_command_injection
     name_zh: 操作系统命令注入
     severity: high
-    description: 用户输入被拼入系统命令，攻击者可执行任意系统命令。
-    fix_direction: subprocess 参数列表传递 + shell=False；确需 shell 时对输入做严格白名单。
-    related_rules: [PY-002, PY-003, PY-010]
+    description: "User input concatenated into a system command; attackers can execute arbitrary OS commands. | 用户输入被拼入系统命令，攻击者可执行任意系统命令。"
+    fix_direction: "subprocess with an argument list and shell=False; if a shell is truly needed, strict whitelisting. | subprocess 参数列表传递 + shell=False；确需 shell 时对输入做严格白名单。"
+    related_rules: ['PY-002', 'PY-003', 'PY-010']
 
   - id: CWE-95
     name: code_injection
     name_zh: 代码注入
     severity: high
-    description: eval/exec 执行不可信输入，攻击者可执行任意 Python 代码。
-    fix_direction: JSON 用 json.loads；表达式用 ast.literal_eval；动态逻辑用字典分发。
+    description: "eval/exec applied to untrusted input; attackers can execute arbitrary Python code. | eval/exec 执行不可信输入，攻击者可执行任意 Python 代码。"
+    fix_direction: "JSON via json.loads; expressions via ast.literal_eval; dynamic logic via dict dispatch. | JSON 用 json.loads；表达式用 ast.literal_eval；动态逻辑用字典分发。"
     template: safe_eval_alt
-    related_rules: [PY-001]
+    related_rules: ['PY-001']
 
   - id: CWE-798
     name: hardcoded_credentials
     name_zh: 硬编码凭据
     severity: high
-    description: 密钥/密码写死在源码中，随代码泄露（git 仓库/反编译/日志）。
-    fix_direction: 环境变量/密钥管理服务注入；泄露后立即轮换。
+    description: "Secrets/passwords hardcoded in the source and leaked with the code (git history, decompilation, logs). | 密钥/密码写死在源码中，随代码泄露（git 仓库/反编译/日志）。"
+    fix_direction: "Inject through environment variables or a secret manager; rotate immediately after exposure. | 环境变量/密钥管理服务注入；泄露后立即轮换。"
     template: secure_config
-    related_rules: [GEN-001]
+    related_rules: ['GEN-001']
 
   - id: CWE-502
     name: unsafe_deserialization
     name_zh: 不安全反序列化
     severity: high
-    description: pickle/yaml.load 反序列化不可信数据可执行任意对象构造（RCE）。
-    fix_direction: 外部数据用 JSON；yaml 用 safe_load；pickle 仅限可信内部数据。
-    related_rules: [PY-004, PY-005, PY-007, BL-004]
+    description: "Deserializing untrusted data via pickle/yaml.load can trigger arbitrary object construction (RCE). | pickle/yaml.load 反序列化不可信数据可执行任意对象构造（RCE）。"
+    fix_direction: "Use JSON for external data; yaml.safe_load for YAML; pickle only for trusted internal data. | 外部数据用 JSON；yaml 用 safe_load；pickle 仅限可信内部数据。"
+    related_rules: ['PY-004', 'PY-005', 'PY-007', 'BL-004']
 
   - id: CWE-338
     name: weak_prng
     name_zh: 弱随机数
     severity: medium
-    description: random 模块是 Mersenne Twister，可预测，不适合 token/密钥。
-    fix_direction: 安全用途一律用 secrets 模块（CSPRNG）。
+    description: "The random module is a Mersenne Twister - predictable and unfit for tokens/keys. | random 模块是 Mersenne Twister，可预测，不适合 token/密钥。"
+    fix_direction: "Always use the secrets module (CSPRNG) for security purposes. | 安全用途一律用 secrets 模块（CSPRNG）。"
     template: secure_token
-    related_rules: [GEN-003]
+    related_rules: ['GEN-003']
 
   - id: CWE-327
     name: broken_crypto
     name_zh: 破损/过时加密算法
     severity: medium
-    description: md5/sha1 已可碰撞，不应用于密码存储与完整性校验。
-    fix_direction: 密码用 bcrypt/argon2/scrypt/PBKDF2；完整性用 SHA-256+。
+    description: "md5/sha1 are collision-broken and must not be used for password storage or integrity checks. | md5/sha1 已可碰撞，不应用于密码存储与完整性校验。"
+    fix_direction: "bcrypt/argon2/scrypt/PBKDF2 for passwords; SHA-256+ for integrity. | 密码用 bcrypt/argon2/scrypt/PBKDF2；完整性用 SHA-256+。"
     template: password_hash
-    related_rules: [GEN-004]
+    related_rules: ['GEN-004']
 
   - id: CWE-319
     name: cleartext_transmission
     name_zh: 明文传输
     severity: low
-    description: http:// 明文传输可被中间人窃听/篡改。
-    fix_direction: 全链路 https；本地调试除外（需注释）。
-    related_rules: [GEN-002]
+    description: "Plain http:// transmission can be eavesdropped or tampered with by a man-in-the-middle. | http:// 明文传输可被中间人窃听/篡改。"
+    fix_direction: "HTTPS end to end; local debugging only with an explanatory comment. | 全链路 https；本地调试除外（需注释）。"
+    related_rules: ['GEN-002']
 
   - id: CWE-295
     name: improper_cert_validation
     name_zh: 证书校验不当
     severity: medium
-    description: verify=False 关闭校验，中间人可伪造服务端。
-    fix_direction: 保持 verify=True；自签名证书加入信任库。
-    related_rules: [GEN-008]
+    description: "verify=False disables certificate validation; an attacker can impersonate the server. | verify=False 关闭校验，中间人可伪造服务端。"
+    fix_direction: "Keep verify=True; add self-signed certs to the trust store. | 保持 verify=True；自签名证书加入信任库。"
+    related_rules: ['GEN-008']
 
   - id: CWE-347
     name: improper_signature_verification
     name_zh: 签名校验不当
     severity: high
-    description: JWT 关闭签名校验或允许 alg=none，攻击者可伪造任意 token。
-    fix_direction: 固定 algorithms 列表 + 密钥校验；禁止 verify_signature=False。
-    related_rules: [GEN-007]
+    description: "JWT signature verification disabled or alg=none allowed; attackers can forge arbitrary tokens. | JWT 关闭签名校验或允许 alg=none，攻击者可伪造任意 token。"
+    fix_direction: "Pin an explicit algorithms list plus key verification; never verify_signature=False. | 固定 algorithms 列表 + 密钥校验；禁止 verify_signature=False。"
+    related_rules: ['GEN-007']
 
   - id: CWE-532
     name: sensitive_info_in_logs
     name_zh: 日志泄露敏感信息
     severity: low
-    description: 密码/密钥/token 写入日志，运维/日志系统可读取。
-    fix_direction: 输出掩码；日志脱敏中间件。
-    related_rules: [GEN-006]
+    description: "Passwords/keys/tokens written into logs can be read by operators/log systems. | 密码/密钥/token 写入日志，运维/日志系统可读取。"
+    fix_direction: "Print masked values; apply a log sanitization layer. | 输出掩码；日志脱敏中间件。"
+    related_rules: ['GEN-006']
 
   - id: CWE-80
     name: xss
     name_zh: 跨站脚本
     severity: high
-    description: 用户输入未转义进入 HTML 输出。
-    fix_direction: 模板引擎自动转义；禁用 |safe/Markup 处理用户输入。
-    related_rules: [BL-003]
+    description: "User input enters HTML output without escaping (cross-site scripting). | 用户输入未转义进入 HTML 输出。"
+    fix_direction: "Rely on template-engine auto-escaping; never |safe / Markup on user input. | 模板引擎自动转义；禁用 |safe/Markup 处理用户输入。"
+    related_rules: ['BL-003']
 
   - id: CWE-22
     name: path_traversal
     name_zh: 路径穿越
     severity: high
-    description: ../ 序列逃逸目标目录读写任意文件。
-    fix_direction: resolve 后校验前缀；不信任原始文件名；CSPRNG 重命名。
+    description: "../-style sequences escape the target directory to read/write arbitrary files. | ../ 序列逃逸目标目录读写任意文件。"
+    fix_direction: "Resolve paths and validate the prefix; never trust raw file names; rename with a CSPRNG. | resolve 后校验前缀；不信任原始文件名；CSPRNG 重命名。"
     template: file_upload
-    related_rules: [PY-006]
+    related_rules: ['PY-006']
 
   - id: CWE-434
     name: unrestricted_file_upload
     name_zh: 不受限制的文件上传
     severity: high
-    description: 上传类型/大小不限制，可上传 webshell。
-    fix_direction: 扩展名白名单 + 魔数校验 + MIME 白名单 + 大小限制（fail-closed）。
+    description: "Unrestricted upload type/size - a webshell can be uploaded. | 上传类型/大小不限制，可上传 webshell。"
+    fix_direction: "Extension whitelist + magic-byte check + MIME whitelist + size limit (fail closed). | 扩展名白名单 + 魔数校验 + MIME 白名单 + 大小限制（fail-closed）。"
     template: file_upload
 
   - id: CWE-489
     name: active_debug_code
     name_zh: 活跃调试代码
     severity: medium
-    description: 生产环境 debug=True，Werkzeug 调试器可远程执行代码。
-    fix_direction: 环境变量控制 debug 开关，生产默认 False。
-    related_rules: [PY-008, PY-009]
+    description: "debug=True in production; the Werkzeug debugger can execute code remotely. | 生产环境 debug=True，Werkzeug 调试器可远程执行代码。"
+    fix_direction: "Control the debug flag via environment variable; default False in production. | 环境变量控制 debug 开关，生产默认 False。"
+    related_rules: ['PY-008', 'PY-009']
 
   - id: CWE-204
     name: observable_response_discrepancy
     name_zh: 可观察的响应差异
     severity: low
-    description: 用户不存在/密码错误返回不同响应，可枚举用户名。
-    fix_direction: 统一错误信息与响应时间。
+    description: "Different responses for 'user missing' vs 'wrong password' allow username enumeration. | 用户不存在/密码错误返回不同响应，可枚举用户名。"
+    fix_direction: "Unify error messages and response timing. | 统一错误信息与响应时间。"
 
   - id: CWE-307
     name: improper_auth_attempts_limit
     name_zh: 未限制认证尝试次数
     severity: medium
-    description: 登录无速率限制，可暴力破解。
-    fix_direction: 限速器/指数退避/账号锁定。
+    description: "Login attempts are not rate limited; brute-force is possible. | 登录无速率限制，可暴力破解。"
+    fix_direction: "Rate limiter / exponential backoff / account lockout. | 限速器/指数退避/账号锁定。"
 
   - id: CWE-208
     name: timing_side_channel
     name_zh: 时序侧信道
     severity: low
-    description: 普通字符串比较提前返回，可据响应时间逐字节破解。
-    fix_direction: hmac.compare_digest / secrets.compare_digest 恒定时间比较。
+    description: "Plain string comparison returns early and leaks byte positions via timing. | 普通字符串比较提前返回，可据响应时间逐字节破解。"
+    fix_direction: "Constant-time comparison via hmac.compare_digest / secrets.compare_digest. | hmac.compare_digest / secrets.compare_digest 恒定时间比较。"
     template: secure_token
 
   - id: CWE-377
     name: insecure_temp_file
     name_zh: 不安全临时文件
     severity: medium
-    description: 可预测的临时路径存在符号链接/竞争风险。
-    fix_direction: tempfile.mkstemp/NamedTemporaryFile。
-    related_rules: [PY-006]
+    description: "Predictable temporary paths introduce symlink/race risks. | 可预测的临时路径存在符号链接/竞争风险。"
+    fix_direction: "Use tempfile.mkstemp / tempfile.NamedTemporaryFile. | tempfile.mkstemp/NamedTemporaryFile。"
+    related_rules: ['PY-006']
 
   - id: CWE-400
     name: uncontrolled_resource_consumption
     name_zh: 资源不受控消耗
     severity: medium
-    description: 上传/请求无大小限制，可 DoS。
-    fix_direction: 明确大小上限 + 流式处理。
+    description: "Uploads/requests have no size limit; DoS is possible. | 上传/请求无大小限制，可 DoS。"
+    fix_direction: "Set explicit size limits and stream processing. | 明确大小上限 + 流式处理。"
     template: file_upload
 
   - id: CWE-96
     name: improper_sri_control
     name_zh: 静态代码注入（动态导入）
     severity: medium
-    description: __import__(用户输入) 可加载任意模块。
-    fix_direction: importlib.import_module + 模块名白名单。
-    related_rules: [BL-002]
+    description: "__import__(user input) can load arbitrary modules (static code injection). | __import__(用户输入) 可加载任意模块。"
+    fix_direction: "importlib.import_module with a module-name whitelist. | importlib.import_module + 模块名白名单。"
+    related_rules: ['BL-002']

@@ -1,162 +1,149 @@
 ---
 name: secure-vibe
-description: 生成时安全（Secure by Generation）：写代码之前注入安全规则，生成后立即校验，违规自动修复（最多 3 次），全程记日志。支持 Python/C/C++/PHP/HTML/JS/Go/Shell/Dockerfile/Kubernetes/Terraform。仅当用户要求编写或修改代码/脚本/API/数据库操作/容器与基础设施配置时使用。用法：先 `python cli.py context` 获取安全规则，再写代码，写完立即 `python cli.py validate` 校验，未通过按 fix_hint 修复，最后 `python cli.py log` 记录。
+description: Secure-by-generation guardrail for AI coding agents. Before writing code, inject security rules; after generating, validate in milliseconds and auto-repair up to 3 rounds, with full JSONL audit logging. Supports Python/C/C++/PHP/HTML/JS/Go/Java/Shell/Dockerfile/Kubernetes/Terraform/GitHub Actions. Use whenever the user asks to write or modify code, scripts, APIs, database operations, or container/infrastructure configs. Workflow: run `python cli.py context` first to load the rules, write the code, run `python cli.py validate` immediately after, fix per fix_hint, and finish with `python cli.py log`.
 ---
 
-# Secure-Vibe — 生成时安全编码技能
+# Secure-Vibe — Secure-by-Generation Coding Skill
 
-你（Agent）现在启用了"生成时安全"编码模式。**你不是先生成后检查，而是在写第一行代码之前就加载安全约束。** 本技能的校验器和规则引擎由本目录下的 Python 工具提供，LLM 就是你自己（session 模式）——不需要任何 API Key。
+You (the agent) are now in secure-by-generation mode. **You do not generate first and inspect later — you load the security constraints before writing the first line of code.** The validator and rule engine in this directory are Python tools; the LLM is you (session mode) — no API key needed.
 
-## 调用方式（跨 Agent 统一）
+## Invocation (uniform across agents)
 
-- 本技能的 CLI 是 `cli.py`，位于**本 SKILL.md 所在目录**（下文记作 `SKILL_DIR`，即你从磁盘读取此文件的那个目录）。下面所有命令都用其绝对路径 `python "$SKILL_DIR/cli.py"` 调用——按下面的方式展开后，opencode / Codex / Claude Code 及任何能执行 shell 的 Agent 一致适用。
-- 若你当前工作目录恰好是 `SKILL_DIR`，等价地写 `python cli.py ...` 即可（`cli.py` 不依赖工作目录，规则/模板均相对自身定位）。
-- 运行环境：Python 3.7+（Linux/macOS 若无 `python` 请用 `python3`）且已安装 `pyyaml`（本目录 `requirements.txt`，`pip install pyyaml`）。安装脚本会在安装时自动寻找带 pyyaml 的解释器并做 `selftest` 自检。
-- `context` / `validate` / `log` / `selftest` 全部本地执行、毫秒级、零网络、零 API Key。
+- The CLI is `cli.py`, located in **the directory that contains this SKILL.md** (referred to as `SKILL_DIR` below — the directory you read this file from). Invoke every command below with its absolute path, e.g. `python "$SKILL_DIR/cli.py"`. With `SKILL_DIR` expanded this works identically on opencode / Codex / Claude Code or any agent that can run a shell.
+- If your working directory is already `SKILL_DIR`, `python cli.py ...` is equivalent (`cli.py` resolves rules/templates relative to its own location, not the cwd).
+- Runtime requirement: Python 3.7+ (use `python3` on Linux/macOS when `python` is missing) with `pyyaml` installed (`requirements.txt`, i.e. `pip install pyyaml`). The install script finds a suitable interpreter and runs `selftest` automatically.
+- `context` / `validate` / `log` / `selftest` are local, millisecond-scale, offline, zero API key.
 
-## 适用与不适用
+## When to use / when not to use
 
-- 适用语言：**Python / C / C++ / PHP / HTML / JavaScript(Node.js) / Go / Shell / Java / Dockerfile / Kubernetes / Terraform / GitHub Actions**。
-- `--language` 取值：`python`、`c`、`cpp`、`php`、`html`、`js`、`go`、`sh`、`java`、`dockerfile`、`kubernetes`、`terraform`、`github-actions`；别名可用（`C++`→`cpp`、`javascript`/`node`/`nodejs`→`js`、`golang`→`go`、`bash`→`sh`、`docker`→`dockerfile`、`k8s`→`kubernetes`、`tf`→`terraform`、`workflow`/`gha`→`github-actions`）。
-- 各语言覆盖：通用安全规则（密钥/SQL/明文 HTTP/弱哈希/JWT/TLS）全部语言共享；语言特有规则见下表。
-- 继承链：`cpp` 自动加载 C 规则；`php` 自动加载 HTML+JS 规则（PHP 模板中的 HTML/JS 片段同样被检测）；`html` 自动加载 JS 规则（内联脚本同样被检测）。
-- 不适用：阅读/解释代码、纯问答、写文档，以及**其他语言**（Rust/Ruby/Swift 等暂未覆盖，规则引擎会退化为仅通用规则）。
-- 未覆盖语言任务：说明暂不支持该语言的完整规则集，可作通用口头提醒（如密钥不入库），不要用错误的 `--language` 调 `validate`。
+- Supported languages: **Python / C / C++ / PHP / HTML / JavaScript(Node.js) / Go / Java / Shell / Dockerfile / Kubernetes / Terraform / GitHub Actions**.
+- `--language` values: `python`, `c`, `cpp`, `php`, `html`, `js`, `go`, `sh`, `java`, `dockerfile`, `kubernetes`, `terraform`, `github-actions`. Aliases are accepted (`C++`→`cpp`, `javascript`/`node`/`nodejs`→`js`, `golang`→`go`, `bash`→`sh`, `docker`→`dockerfile`, `k8s`→`kubernetes`, `tf`→`terraform`, `workflow`/`gha`→`github-actions`).
+- Coverage: the general rules (hardcoded secrets / SQL concat / plaintext HTTP / weak hashes / JWT / TLS) are shared by all languages; language-specific rules are listed below.
+- Inheritance chains: `cpp` auto-loads C rules; `php` auto-loads HTML+JS rules (HTML/JS fragments inside PHP templates are also checked); `html` auto-loads JS rules (inline scripts are also checked).
+- Not applicable: reading/explaining code, pure Q&A, writing docs, and **other languages** (Rust/Ruby/Swift etc. are not yet covered — the engine falls back to general rules only).
+- For uncovered languages: state that a full rule set is not supported, give generic verbal cautions (e.g. no secrets in the repo), and do NOT call `validate` with a wrong `--language`.
 
-### 语言特有检测能力
+### Language-specific detection capabilities
 
-| 语言 | 特有规则（通用规则之外） |
-|------|--------------------------|
-| python | eval/exec、os.system、shell=True、pickle/yaml/marshal 反序列化、input 污点追踪（AST 引擎）；SSRF、XXE、SSTI、路径穿越、Zip Slip、NoSQL 注入、ORM raw 查询、JWT alg=none、CORS、开放重定向、ReDoS、ML 反序列化（torch/joblib/pandas） |
-| c | system/popen、sprintf、strcpy/strcat、rand、非常量格式字符串、scanf %s、tmpnam/mktemp |
-| cpp | 继承全部 C 规则 + std:: 不安全函数、字符串拼接构造命令 |
-| php | shell_exec/eval/unserialize/include 变量、SQL 拼接超全局、echo 超全局未转义（XSS）、extract；黑名单：超全局直接进命令执行/include；继承 HTML+JS 规则 |
-| html | 内联事件处理器、javascript: 伪协议 URL、iframe 无 sandbox、CDN 脚本无 SRI、_blank 无 noopener；继承 JS 规则 |
-| js | eval/new Function、innerHTML 非字面量赋值（DOM XSS）、document.write、字符串定时器、postMessage 通配符源；Node：child_process.exec 拼接、res.send 反射、原型污染、动态 require；黑名单：location/URL 直写 innerHTML、prototype pollution merge |
-| go | exec.Command 经 shell、SQL 拼接/fmt.Sprintf、SSRF、template.HTML 未转义、math/rand 安全值、表单参数直入文件/命令、InsecureSkipVerify |
-| java | Runtime.exec 拼接、JDBC Statement 拼接、ObjectInputStream 反序列化、XXE（DocumentBuilder/SAXParser）、java.util.Random、Spring Actuator 敏感端点、AES/ECB |
-| sh | curl/wget 管道给 shell、eval 变量、rm -rf 危险目标、未加引号变量、sudo NOPASSWD |
-| dockerfile | USER root、ENV/ARG 写密钥、curl\|sh、ADD 远程 URL、latest 标签 |
-| kubernetes | privileged、hostPath、hostNetwork/hostPID、runAsUser 0/特权提升、Secret 全量 env |
-| terraform | 0.0.0.0/0 安全组、S3 public-read、RDS public、硬编码密钥 default、全端口入站 |
-| github-actions | run 中展开 ${{ github.event.* }}（表达式注入）、echo secrets、@main/@master 未锁定 action |
+| Language | Specific rules (beyond the shared general rules) |
+|----------|-------------------------------------------------|
+| python | eval/exec, os.system, shell=True, pickle/yaml/marshal deserialization, input taint analysis (AST engine); SSRF, XXE, SSTI, path traversal, Zip Slip, NoSQL injection, ORM raw queries, JWT alg=none, CORS, open redirect, ReDoS, ML deserialization (torch/joblib/pandas) |
+| c | system/popen, sprintf, strcpy/strcat, rand, non-constant format strings, scanf %s, tmpnam/mktemp |
+| cpp | inherits all C rules + std:: unsafe functions, command built by string concatenation |
+| php | shell_exec/eval/unserialize/include with variables, SQL concat with superglobals, unescaped echo of superglobals (XSS), extract; blacklist: superglobals into exec/include; inherits HTML+JS rules |
+| html | inline event handlers, javascript: URLs, iframe without sandbox, CDN script without SRI, _blank without noopener; inherits JS rules |
+| js | eval/new Function, non-literal innerHTML assignment (DOM XSS), document.write, string timers, postMessage wildcard origin; Node: child_process.exec concatenation, res.send reflection, prototype pollution, dynamic require; blacklist: URL sources into innerHTML, prototype pollution merge |
+| go | commands via shell (exec.Command sh), SQL concat/fmt.Sprintf, SSRF, template.HTML, math/rand for security values, form values into file/command sinks, InsecureSkipVerify |
+| java | Runtime.exec concat, JDBC Statement concat, ObjectInputStream deserialization, XXE (DocumentBuilder/SAXParser), java.util.Random, Spring Actuator sensitive endpoints, AES/ECB |
+| sh | curl/wget piped to shell, eval of variables, rm -rf dangerous targets, unquoted variables, sudo NOPASSWD |
+| dockerfile | USER root, ENV/ARG hardcoded secrets, curl\|sh, remote ADD, latest tag |
+| kubernetes | privileged, hostPath, hostNetwork/hostPID, runAsUser 0/privilege escalation, full Secret exposure via env |
+| terraform | 0.0.0.0/0 security groups, S3 public-read, public RDS, hardcoded secret defaults, all-ports ingress |
+| github-actions | expanding ${{ github.event.* }} inside run (expression injection), echo secrets, @main/@master unpinned actions |
 
-## 工作流（每次写代码必须完整执行）
+## Workflow (execute completely for every coding task)
 
-### 第 1 步：加载安全上下文（写代码之前）
-
-```bash
-python "$SKILL_DIR/cli.py" context --task "<用户任务描述>" --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions> --framework "<框架>"
-```
-
-阅读返回 JSON 中的 `system_prompt`（安全规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。这些规则是硬约束，你生成的代码必须逐条遵守。
-
-### 第 2 步：生成代码（你自己的 LLM 能力）
-
-按规则写代码。硬性要求：
-
-- SQL 一律参数化：`cursor.execute(sql, params)`，禁止 f-string/%/.format/+ 拼接
-- 用户输入直接进入 `eval/exec/os.system/subprocess(shell=True)` 是绝对禁止的
-- 密钥/密码从环境变量读取，绝不硬编码
-- 安全用途随机值用 `secrets` 模块，禁用 `random`
-- 密码哈希用 bcrypt/argon2/PBKDF2，禁用 md5/sha1
-
-### 第 3 步：立即校验（毫秒级，必须执行）
+### Step 1: Load security context (BEFORE writing code)
 
 ```bash
-python "$SKILL_DIR/cli.py" validate --file <你写的代码文件> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
+python "$SKILL_DIR/cli.py" context --task "<user task description>" --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions> --framework "<framework>"
 ```
 
-- exit 0 → 通过，进入第 5 步
-- exit 1 → 返回 JSON 中有 `violations`（每条含 `rule_id`、`line`、`severity`、`fix_hint`），进入第 4 步
-- exit 2 → 工具错误，不进入修复循环：
-  - 含 `syntax_error`：语法错误不是安全违规，先修复语法后重新校验
-  - 含 `error: "file not found"`：修正 `--file` 路径后重新校验
-  - 校验内存中的代码片段时可用 `--code "<代码>"` 替代 `--file`
+Read the `system_prompt` field of the returned JSON (rule list + banned patterns + few-shot templates + checklist requirement). These rules are hard constraints — every line of code you generate must comply.
 
-### 第 4 步：自动修复（最多 3 次）
+### Step 2: Generate code (your own LLM ability)
 
-按 `fix_hint` 修复违规代码，然后重新执行第 3 步校验。
+Code per the rules. Hard requirements:
 
-- 优先**局部修复**：只改违规行及关联代码，功能保持不变
-- **最多重试 3 次**；第 3 次仍未通过时停止修复，在答复中输出完整违规列表并标记 **[需人工修复]**
-- 注意 `severity`：`high` 项必须修复（硬编码密钥、SQL 拼接、命令注入）；`medium` 项应修复，确实无法修复需说明原因；`low` 项如明文 http 在本地调试场景可注释说明后豁免
+- SQL must be parameterized: `cursor.execute(sql, params)`; never f-string/%/.format/+ concatenation.
+- User input must never flow directly into `eval/exec/os.system/subprocess(shell=True)`.
+- Secrets/passwords come from environment variables; never hardcode.
+- Security-sensitive randomness uses `secrets` (Python) / `crypto/rand` (Go) / `SecureRandom` (Java); never `random`/`math/rand`/`rand()`.
+- Password hashing uses bcrypt/argon2/PBKDF2; never md5/sha1.
 
-### 第 5 步：记录日志（必须执行）
+### Step 3: Validate immediately (millisecond-scale, mandatory)
 
 ```bash
-python "$SKILL_DIR/cli.py" log --task "<任务描述>" --file <最终代码文件> --retries <实际重试次数> --verdict <verdict>
+python "$SKILL_DIR/cli.py" validate --file <your code file> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
 ```
 
-`--verdict` 取值及触发场景：
+- exit 0 → passed, go to Step 5
+- exit 1 → JSON contains `violations` (each with `rule_id`, `line`, `severity`, `fix_hint`), go to Step 4
+- exit 2 → tool error, do NOT enter the repair loop:
+  - with `syntax_error`: syntax errors are not security violations; fix the syntax, then re-validate
+  - with `error: "file not found"`: fix the `--file` path, then re-validate
+  - to validate an in-memory snippet use `--code "<code>"` instead of `--file`
 
-- `passed`：最终校验通过
-- `needs_human_review`：第 4 步重试 3 次仍未通过（对应 `[需人工修复]`）
-- `failed`：第 1/3 步之前就失败，例如 `context`/`validate` 无法执行
+### Step 4: Auto-repair (max 3 rounds)
 
-用户手动修改过代码时用 `--original <初版文件>` 记录 diff。
+Fix the code per `fix_hint`, then re-run Step 3.
 
-### 漏检上报（发现校验器没检出的危险模式时）
+- Prefer **local fixes**: change only the violating lines and related code; keep behavior unchanged.
+- **Max 3 retries.** If round 3 still fails, stop, output the full violation list and mark it **[needs human review]**.
+- Respect `severity`: `high` must be fixed (hardcoded secrets, SQL concat, command injection); `medium` should be fixed, or explain explicitly why not; `low` (e.g. plaintext http for local debugging) may be exempted with an explanatory comment.
+
+### Step 5: Log (mandatory)
 
 ```bash
-python "$SKILL_DIR/cli.py" missed --pattern "<模式描述或代码片段>" --note "<说明>"
+python "$SKILL_DIR/cli.py" log --task "<task description>" --file <final code file> --retries <actual retry count> --verdict <verdict>
 ```
 
-## 输入与输出约定
+`--verdict` values and when to use them:
 
-- 输入：`--task` 必填（一句话描述任务）；`--language` 取值 `python`/`c`/`cpp`/`php`/`html`/`js`/`go`/`sh`/`java`/`dockerfile`/`kubernetes`/`terraform`/`github-actions`（默认 `python`）；`--framework` 可选（如 `fastapi`/`flask`/`laravel`/`spring`，无则省略）。混合模板（PHP 文件含 HTML/JS）直接用 `--language php`，继承链会覆盖 HTML/JS 片段；Docker/K8s/Terraform/GitHub Actions 属于 IaC/流水线，直接传对应语言名。
-- `context` 输出 JSON：关键字段为 `system_prompt`（规则清单 + 禁用模式 + few-shot 模板 + 自检要求）。
-- `validate` 输出 JSON：`passed`、`violations`（每条含 `rule_id`/`line`/`severity`/`fix_hint`）、`summary`、`syntax_error`（语法错误时非空）、`repair_instruction`。
-- `severity` 三档：`high` / `medium` / `low`。
+- `passed`: final validation passed
+- `needs_human_review`: Step 4 retried 3 times and still failed (matches the `[needs human review]` mark)
+- `failed`: the workflow failed before validation (e.g. `context`/`validate` could not run)
 
-## 示例：按用户名查订单的 FastAPI 接口
+If the user manually modified the code, use `--original <first version file>` to record the diff.
 
-任务："写一个按用户名查订单的 FastAPI 接口（SQLite）"
+### Missed-detection report (when you find a dangerous pattern the validator missed)
 
-1. 加载规则：
-   python "$SKILL_DIR/cli.py" context --task "按用户名查订单接口" --language python --framework fastapi
-   → `system_prompt` 含 GEN-005（SQL 字符串拼接）、GEN-001（硬编码密钥）等硬约束
-2. 生成 `orders.py`，其中一行：
+```bash
+python "$SKILL_DIR/cli.py" missed --pattern "<pattern description or code snippet>" --note "<explanation>"
+```
+
+## Input/output contract
+
+- Input: `--task` required (one-sentence task); `--language` one of the values above (default `python`); `--framework` optional (e.g. `fastapi`/`flask`/`laravel`/`spring`; omit when unused). For mixed templates (PHP files containing HTML/JS) pass `--language php` — the inheritance chain covers the HTML/JS fragments. For Docker/K8s/Terraform/GitHub Actions pass the IaC/pipeline language name directly.
+- `context` output JSON: key field `system_prompt` (rule list + banned patterns + few-shot templates + checklist requirement).
+- `validate` output JSON: `passed`, `violations` (each with `rule_id`/`line`/`severity`/`fix_hint`), `summary`, `syntax_error` (non-empty on syntax errors), `repair_instruction`.
+- `severity` has three levels: `high` / `medium` / `low`.
+
+## Example: FastAPI endpoint to query orders by username
+
+Task: "Write a FastAPI endpoint that queries orders by username (SQLite)"
+
+1. Load rules:
+   python "$SKILL_DIR/cli.py" context --task "query orders by username endpoint" --language python --framework fastapi
+   → `system_prompt` contains GEN-005 (SQL string concatenation), GEN-001 (hardcoded secrets), etc.
+2. Generate `orders.py`, containing this line:
    cursor.execute(f"SELECT * FROM orders WHERE user='{name}'")
-3. 校验：
+3. Validate:
    python "$SKILL_DIR/cli.py" validate --file orders.py --language python
-   → exit 1，`violations` 示例：
+   → exit 1, `violations` example:
    {"rule_id": "GEN-005", "line": 12, "severity": "high",
-    "fix_hint": "使用参数化查询：cursor.execute(sql, params)；禁止 f-string/%/.format/+ 拼接 SQL"}
-4. 修复第 12 行为参数化查询 → 重新校验 → exit 0
-5. 记录：
-   python "$SKILL_DIR/cli.py" log --task "按用户名查订单接口" --file orders.py --retries 1 --verdict passed
+    "fix_hint": "Use parameterized query: cursor.execute(sql, params); never build SQL via f-string/%/.format/+ concatenation"}
+4. Fix line 12 to a parameterized query → re-validate → exit 0
+5. Log:
+   python "$SKILL_DIR/cli.py" log --task "query orders by username endpoint" --file orders.py --retries 1 --verdict passed
 
-## 命令参考
+## Command reference
 
-| 命令 | 作用 | exit code |
-|------|------|-----------|
-| `context --task ... [--framework f] [--full]` | 获取安全规则清单（写代码前必调） | 0 |
-| `validate --file f.py [--code "..."] [--ignore R1,R2]` | 校验代码（写完必调） | 0 通过 / 1 违规 / 2 错误 |
-| `log --task ... --file f.py --retries N --verdict v` | 记录生成过程 | 0 |
-| `missed --pattern ... [--note ...]` | 上报漏检模式 | 0 |
-| `cwe --id CWE-89` | 查询 CWE 参考知识 | 0 / 1 |
-| `version [--check <url>]` | 查询安装版本 / 对比远端最新版 | 0 |
-| `update` | 更新 Skill（git 管理安装时 git pull + 自检） | 0 / 1 |
-| `selftest` | 安装自检 | 0 / 1 |
+| Command | Purpose | exit code |
+|---------|---------|-----------|
+| `context --task ... [--framework f] [--full]` | Get the security rule list (call before writing code) | 0 |
+| `validate --file f.py [--code "..."] [--ignore R1,R2]` | Validate code (call after writing) | 0 pass / 1 violations / 2 error |
+| `log --task ... --file f.py --retries N --verdict v` | Record the generation process | 0 |
+| `missed --pattern ... [--note ...]` | Report a missed detection pattern | 0 |
+| `cwe --id CWE-89` | Query CWE reference knowledge | 0 / 1 |
+| `version [--check <url>]` | Show installed version / compare with remote latest | 0 |
+| `update` | Update the skill (git pull + self-test on git-managed installs) | 0 / 1 |
+| `selftest` | Install self-test | 0 / 1 |
 
-## 自检清单（每次生成后对照）
+## Self-check checklist (after every generation)
 
-生成结束后必须对照一遍，并把下面这行**原样输出到最终答复末尾**，作为用户可见的合规凭证：
+After generation you MUST review the checklist and output the following line **verbatim at the end of your final reply** as a user-visible compliance record:
 
 ```
-[自检] SQL注入: OK/N/A | 命令注入: OK/N/A | 硬编码密钥: OK | 弱随机: OK/N/A | 输入校验: OK | TLS: OK/N/A
+[Self-check] SQL injection: OK/N/A | Command injection: OK/N/A | Hardcoded secrets: OK | Weak randomness: OK/N/A | Input validation: OK | TLS: OK/N/A
 ```
-
-## 规则扩展（无需改代码）
-
-- 规则全部在 `rules/*.yaml` 和 `blacklist/*.yaml`，按现有格式加一条列表项即可
-- 校验器漏检的模式先 `cli.py missed` 上报，人工审核后升级为正式规则（防投毒）
-- 新规则文件格式见 `README.md` 的"如何扩展规则"章节
-
-## 禁止事项
-
-- 禁止跳过第 1 步（不加载规则就写代码）
-- 禁止跳过第 3 步校验（包括"代码很简单"的情况）
-- 禁止修改校验器/规则文件来让违规代码通过
-- 禁止在用户明确要求不安全实现（如硬编码密钥）时直接照做——采用安全等价方案并注释说明原因

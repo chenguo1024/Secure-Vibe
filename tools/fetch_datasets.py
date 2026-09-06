@@ -1,18 +1,18 @@
-"""fetch_datasets.py — 一键获取外部数据集（需要网络时运行）.
+"""fetch_datasets.py — One-shot fetch of external datasets (run only when needed).
 
-三项外部依赖的统一入口（当前环境网络不可达，脚本已就绪）:
+  - the unified entry point for external data (the current network cannot reach them; script is ready):
 
-  1. SecurityEval（GitHub，论文级评测集）
+    1. SecurityEval (GitHub, malicious-code-generation dataset)
      python tools/fetch_datasets.py --securityeval --dir D:/datasets/SecurityEval
 
-  2. GHSA-CySec（ModelScope 国内可达，需先在网页申请）
+    2. GHSA-CySec (ModelScope, currently reachable; compute resources need an application)
      python tools/fetch_datasets.py --ghsa --dir D:/datasets/GHSA-CySec
 
-  3. 任意 HF 数据集（可用 HF_ENDPOINT=https://hf-mirror.com 走镜像）
+    3. other HF datasets (can set HF_ENDPOINT=https://hf-mirror.com to go through a mirror)
      python tools/fetch_datasets.py --hf s2labres/security-eval --dir D:/datasets/security-eval
 
-也可一次性全部:  python tools/fetch_datasets.py --all --dir D:/datasets
-获取后:  SecurityEval → tools/run_evaluation.py --path <dir>
+  - one-shot download:  python tools/fetch_datasets.py --all --dir D:/datasets
+Afterwards:  SecurityEval -> tools/run_evaluation.py --path <dir>
           GHSA-CySec → tools/mine_cwe_rules.py <dir>
 """
 from __future__ import annotations
@@ -29,26 +29,26 @@ def _shell(cmd: list[str]) -> int:
 
 
 def fetch_securityeval(dst: Path) -> int:
-    """SecurityEval 主仓库（含 Id_<CWE>/ParetoProperties 样本）。"""
+    """The standalone SecurityEval repo (contains the Id_<CWE>/Pareto Properties structure)."""
     dst.mkdir(parents=True, exist_ok=True)
-    print("[1/3] 克隆 SecurityEval（GitHub，国内需代理）")
+    print("[1/3] clone SecurityEval (GitHub, may need a proxy)")
     return _shell(["git", "clone", "--depth", "1",
                    "https://github.com/s2labres/security-eval.git", str(dst)])
 
 
 def fetch_ghsa(dst: Path) -> int:
-    """GHSA-CySec（ModelScope 国内可达，需先申请下载权限）。"""
+    """GHSA-CySec: reachable via ModelScope; access permission may be needed."""
     dst.mkdir(parents=True, exist_ok=True)
-    print("[2/3] 下载 GHSA-CySec（ModelScope）")
-    print("  前置: 浏览器打开 https://www.modelscope.cn/datasets/couvor/GHSA-CySec 申请访问")
+    print("[2/3] download GHSA-CySec (ModelScope)")
+    print("  prerequisite: apply for access at https://www.modelscope.cn/datasets/couvor/GHSA-CySec")
     return _shell(["modelscope", "download", "--dataset", "couvor/GHSA-CySec",
                    "--local_dir", str(dst)])
 
 
 def fetch_hf(repo: str, dst: Path) -> int:
-    """任意 HuggingFace 数据集（可用镜像）。"""
+    """Other HuggingFace datasets (optional, mirror-supported)."""
     dst.mkdir(parents=True, exist_ok=True)
-    print(f"[3/3] 下载 HF 数据集 {repo}")
+    print(f"[3/3] download HF dataset {repo}")
     code = (
         "from datasets import load_dataset\n"
         f"ds = load_dataset('{repo}')\n"
@@ -59,12 +59,12 @@ def fetch_hf(repo: str, dst: Path) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="一键获取 Secure-Vibe 外部数据集")
-    ap.add_argument("--securityeval", action="store_true", help="获取 SecurityEval")
-    ap.add_argument("--ghsa", action="store_true", help="获取 GHSA-CySec")
-    ap.add_argument("--hf", default="", help="通过 HF 镜像获取任意数据集（repo id）")
-    ap.add_argument("--all", action="store_true", help="全部获取")
-    ap.add_argument("--dir", default=".", help="目标目录")
+    ap = argparse.ArgumentParser(description="one-shot fetcher for Secure-Vibe external datasets")
+    ap.add_argument("--securityeval", action="store_true", help="fetch SecurityEval")
+    ap.add_argument("--ghsa", action="store_true", help="fetch GHSA-CySec")
+    ap.add_argument("--hf", default="", help="fetch another dataset via HF (repo id)")
+    ap.add_argument("--all", action="store_true", help="fetch everything")
+    ap.add_argument("--dir", default=".", help="target directory")
     args = ap.parse_args()
 
     base = Path(args.dir); base.mkdir(parents=True, exist_ok=True)
@@ -76,9 +76,9 @@ def main() -> int:
     if args.hf:
         rc |= fetch_hf(args.hf, base / args.hf.replace("/", "__"))
     if rc:
-        print("\n部分获取失败：当前环境需可用网络（GitHub 需代理）。", file=sys.stderr)
+        print("\npartial failures: the current network cannot reach some sources (GitHub needs a proxy)", file=sys.stderr)
     else:
-        print("\n获取完成。用法见文件头注释。")
+        print("\ndone. Usage is in the file header.")
     return rc
 
 

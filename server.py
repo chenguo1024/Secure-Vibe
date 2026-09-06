@@ -1,14 +1,14 @@
-"""server.py — Secure-Vibe HTTP API（可选服务模式）.
+"""server.py — Secure-Vibe HTTP API (optional service mode).
 
-启动:
+Run:
     pip install fastapi uvicorn
     uvicorn server:app --port 8399
-    # 或: python server.py
+    # or: python server.py
 
-端点:
+Endpoints:
     POST /generate   {task, language, framework, context, backend?}
     POST /validate   {code, language}
-    POST /feedback   {pattern, note?}      # 漏检模式上报（规则迭代闭环素材）
+    POST /feedback   {pattern, note?}      # missed-pattern report (rule-iteration material)
     GET  /health
 """
 from __future__ import annotations
@@ -26,18 +26,18 @@ from core.logger import SecureLogger
 from main import generate_secure_code, load_config, validate_code
 
 app = FastAPI(title="Secure-Vibe", version="1.0",
-              description="生成时安全的代码生成 Skill — HTTP API")
+              description="Secure-by-generation coding skill - HTTP API")
 
 _logger = SecureLogger()
 _cfg = load_config()
 
 
 class GenerateRequest(BaseModel):
-    task: str = Field(..., min_length=1, description="任务描述")
+    task: str = Field(..., min_length=1, description="task description")
     language: str = "python"
     framework: str = ""
     context: str = ""
-    backend: str = ""  # 覆盖 config.yaml 的 llm.backend（如 openai/claude/mock）
+    backend: str = ""  # overrides config.yaml llm.backend (e.g. openai/claude/mock)
 
 
 class ValidateRequest(BaseModel):
@@ -46,7 +46,7 @@ class ValidateRequest(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    pattern: str = Field(..., min_length=1, description="漏检的攻击模式描述/代码片段")
+    pattern: str = Field(..., min_length=1, description="description/code snippet of the missed attack pattern")
     note: str = ""
     severity: str = "medium"
 
@@ -58,7 +58,7 @@ def health() -> dict[str, str]:
 
 @app.post("/generate")
 def generate(req: GenerateRequest) -> dict[str, Any]:
-    """生成安全代码。校验不通过时自动进入修复循环。"""
+    """Generate secure code; automatically enters the repair loop on validation failure."""
     import os
     old = None
     if req.backend:
@@ -74,7 +74,7 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # LLM 后端异常等
+    except Exception as exc:  # LLM backend errors, etc.
         raise HTTPException(status_code=502, detail=f"generation failed: {exc}") from exc
     finally:
         if req.backend:
@@ -97,14 +97,14 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
 
 @app.post("/validate")
 def validate(req: ValidateRequest) -> dict[str, Any]:
-    """仅校验已有代码（不生成）。"""
+    """Validate existing code only (no generation)."""
     result = validate_code(req.code, req.language)
     return result.to_dict()
 
 
 @app.post("/feedback")
 def feedback(req: FeedbackRequest) -> dict[str, str]:
-    """漏检模式上报 → 记录到日志，供人工审核后升级为正式规则（规则迭代闭环）。"""
+    """Missed-pattern report -> recorded to the log, to be promoted to an official rule after human review (rule-iteration loop)."""
     path = _logger.log_missed_pattern(req.pattern, note=req.note, severity=req.severity)
     return {"status": "recorded", "log": str(path)}
 

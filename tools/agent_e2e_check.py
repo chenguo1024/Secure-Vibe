@@ -1,4 +1,4 @@
-"""临时脚本：模拟 Agent 通过 shell 调用 cli.py 的完整工具链流程。"""
+"""Ad-hoc script: simulate an agent driving the whole cli.py toolchain via shell."""
 import json
 import os
 import subprocess
@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 py = sys.executable
 tmp = os.environ["TEMP"] + os.sep
 
-# Agent 第2步: 生成代码（故意带漏洞）
+# Agent step 2: generate code (deliberately flawed)
 v1 = tmp + "agent_v1.py"
 open(v1, "w", encoding="utf-8").write(
     "import sqlite3\n"
@@ -23,15 +23,15 @@ open(v1, "w", encoding="utf-8").write(
     "    return token\n"
 )
 
-# Agent 第3步: 校验（expect exit 1）
+# Agent step 3: validate (expect exit 1)
 r = subprocess.run([py, "cli.py", "validate", "--file", v1],
                    capture_output=True, text=True, encoding="utf-8")
 d = json.loads(r.stdout)
-print("第1次校验: exit=%d passed=%s violations=%d" % (r.returncode, d["passed"], len(d["violations"])))
+print("validation #1: exit=%d passed=%s violations=%d" % (r.returncode, d["passed"], len(d["violations"])))
 for v in d["violations"]:
     print("  -", v["rule_id"], "line", v["line"], v["rule_name"], "[%s]" % v["severity"])
 
-# Agent 第4步: 修复（模拟 Agent 按 fix_hint 修好）
+# Agent step 4: repair (simulate the agent fixing per fix_hint)
 v2 = tmp + "agent_v2.py"
 open(v2, "w", encoding="utf-8").write(
     "import os\n"
@@ -47,19 +47,19 @@ open(v2, "w", encoding="utf-8").write(
 r = subprocess.run([py, "cli.py", "validate", "--file", v2],
                    capture_output=True, text=True, encoding="utf-8")
 d = json.loads(r.stdout)
-print("修复后校验: exit=%d passed=%s" % (r.returncode, d["passed"]))
+print("validation after fix: exit=%d passed=%s" % (r.returncode, d["passed"]))
 
-# Agent 第5步: 记录日志（含人工修改 diff）
+# Agent step 5: log (with the manual-edit diff)
 r = subprocess.run([py, "cli.py", "log", "--task", "agent-e2e", "--file", v2,
                     "--original", v1, "--retries", "1", "--verdict", "passed"],
                    capture_output=True, text=True, encoding="utf-8")
 d = json.loads(r.stdout)
-print("日志:", d)
+print("log:", d)
 
-# 漏检上报
+# missed-pattern report
 r = subprocess.run([py, "cli.py", "missed", "--pattern", 'getattr(builtins, "eval")(x)',
                     "--note", "e2e test"],
                    capture_output=True, text=True, encoding="utf-8")
 d = json.loads(r.stdout)
-print("漏检上报:", d["ok"])
+print("missed report ok:", d["ok"])
 print("AGENT E2E: ALL OK")

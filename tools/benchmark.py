@@ -1,19 +1,19 @@
-"""benchmark.py — 本地安全基准评测（离线，无需外部数据集）.
+"""benchmark.py — Local security benchmark (offline, no external datasets).
 
-用途:
-  - 用内置恶意/安全用例集（源自 tests/test_validator.py）实时计算:
-      detection_rate        恶意样本检出率（按规则逐项）
-      false_positive_rate   安全样本误报率
-      avg_latency_ms        平均校验耗时
-  - 将结果写入 logs/benchmark_report.json（可与后续 SecurityEval 报告对比）
+Purpose:
+  - evaluate live from the built-in malicious/safe case sets (sourced from tests/test_validator.py):
+      detection_rate        malicious-sample detection rate (per rule)
+        false_positive_rate   safe-sample false-positive rate
+        avg_latency_ms        average validation latency
+  - write results to logs/benchmark_report.json (comparable with later SecurityEval reports)
 
-用法:
-    python tools/benchmark.py                  # 默认配置运行
-    python tools/benchmark.py --fast           # 只跑前 20 个用例（冒烟）
+Usage:
+    python tools/benchmark.py                  # run with default config
+    python tools/benchmark.py --fast           # only the first 20 cases (smoke)
 
-关系:
-  - 内置用例 = 离线基线；SecurityEval = 论文级基准（tools/run_evaluation.py）
-  - 两者指标口径一致，便于对比
+Relation:
+  - built-in cases = offline baseline; SecurityEval = paper-grade benchmark (tools/run_evaluation.py)
+  - metric definitions stay aligned for comparison
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def run_benchmark(language: str = "python", limit: int = 0) -> dict:
     n_s = len(safe)
     report = {
         "benchmark": "local_builtin",
-        "source": "tests/test_validator.py (手构用例集)",
+        "source": "tests/test_validator.py (hand-curated case sets)",
         "malicious_samples": n_m,
         "safe_samples": n_s,
         "detection_rate": round(detected / n_m, 4) if n_m else None,
@@ -88,8 +88,8 @@ def run_benchmark(language: str = "python", limit: int = 0) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Secure-Vibe 本地基准评测")
-    ap.add_argument("--fast", action="store_true", help="只跑前 20 个用例（冒烟）")
+    ap = argparse.ArgumentParser(description="Secure-Vibe local benchmark")
+    ap.add_argument("--fast", action="store_true", help="only run the first 20 cases (smoke)")
     args = ap.parse_args()
 
     limit = 20 if args.fast else 0
@@ -99,7 +99,7 @@ def main() -> int:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
 
     print(json.dumps(report, ensure_ascii=False, indent=1))
-    print(f"\n报告已写入: {out}")
+    print(f"\nreport written to: {out}")
     return 0
 
 

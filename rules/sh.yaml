@@ -1,36 +1,37 @@
-# rules/sh.yaml — Shell 脚本特有安全规则（bash/sh/zsh；别名 bash/shell/zsh 归一化为 sh）
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+# rules/sh.yaml — Shell script rules (bash/sh/zsh normalize to sh)
 
 - id: SH-001
   name: sh_curl_pipe_shell
   severity: high
   cwe: CWE-78
-  message: 下载内容直接管道给 shell 执行（远端代码执行风险）
-  fix_hint: 禁止 curl/wget 结果直接 | sh；先落盘并校验 SHA256 再执行；安装来源只信任官方域名并写死版本。
+  message: "Downloaded content piped directly into a shell (remote code execution risk) | 下载内容直接管道给 shell 执行（远端代码执行风险）"
+  fix_hint: "Never curl/wget | sh; save to disk, verify SHA256, then execute. Install only from official domains with pinned versions. | 禁止 curl/wget 结果直接 | sh；先落盘并校验 SHA256 再执行；安装来源只信任官方域名并写死版本。"
   match:
     regex:
       - >-
         (?i)\b(curl|wget)\b[^;\n|]*\|\s*(sudo\s+)?(ba|z|k)?sh\b
     exclude_regex: []
 
+
 - id: SH-002
   name: sh_eval_variable
   severity: high
   cwe: CWE-95
-  message: 对变量内容 eval（命令/代码注入风险）
-  fix_hint: 禁止 eval "$var" / eval "$*"；改用数组、case 分发或参数列表直传。
+  message: "eval applied to variable content (command/code injection risk) | 对变量内容 eval（命令/代码注入风险）"
+  fix_hint: "Never eval \"$var\" or eval \"$*\"; use arrays, case dispatch, or direct argument lists instead. | 禁止 eval \"$var\" / eval \"$*\"；改用数组、case 分发或参数列表直传。"
   match:
     regex:
       - >-
         (?i)\beval\s+["']?\$[@*A-Za-z_]
     exclude_regex: []
 
+
 - id: SH-003
   name: sh_rm_dangerous
   severity: high
   cwe: CWE-16
-  message: rm -rf 作用于根目录或未校验变量（系统/文件破坏风险）
-  fix_hint: rm -rf 目标必须为已知目录且路径校验；禁止 rm -rf / 或 rm -rf "$var"（变量未白名单时）。
+  message: "rm -rf on the root directory or unvalidated variables (system/file destruction risk) | rm -rf 作用于根目录或未校验变量（系统/文件破坏风险）"
+  fix_hint: "rm -rf targets must be known, validated directories; never rm -rf / or rm -rf \"$var\" without a whitelist. | rm -rf 目标必须为已知目录且路径校验；禁止 rm -rf / 或 rm -rf \"$var\"（变量未白名单时）。"
   match:
     regex:
       - >-
@@ -39,12 +40,13 @@
         (?i)\brm\s+-(r[sf]|fr|rf)\s+["']?\$
     exclude_regex: []
 
+
 - id: SH-004
   name: sh_unquoted_variable_splice
   severity: medium
   cwe: CWE-78
-  message: 命令中使用未加引号的变量（参数含空格/元字符时可注入）
-  fix_hint: 变量引用始终加双引号 "$var"；数组用 "${arr[@]}"；用户参数通过命令行变量传入。
+  message: "Command uses an unquoted variable (injection through spaces/metacharacters) | 命令中使用未加引号的变量（参数含空格/元字符时可注入）"
+  fix_hint: "Always double-quote variable references (\"$var\"); arrays as \"${arr[@]}\"; pass user arguments as command-line variables. | 变量引用始终加双引号 \"$var\"；数组用 \"${arr[@]}\"；用户参数通过命令行变量传入。"
   match:
     regex:
       - >-
@@ -53,14 +55,16 @@
       - >-
         \$\w+\s*"
 
+
 - id: SH-005
   name: sh_sudo_nopasswd
   severity: medium
   cwe: CWE-250
-  message: 配置 sudo NOPASSWD（提权风险）
-  fix_hint: 避免 NOPASSWD；临时提权用最小权限并限定具体命令。
+  message: "sudo NOPASSWD configured (privilege escalation risk) | 配置 sudo NOPASSWD（提权风险）"
+  fix_hint: "Avoid NOPASSWD; for temporary elevation use least privilege restricted to specific commands. | 避免 NOPASSWD；临时提权用最小权限并限定具体命令。"
   match:
     regex:
       - >-
         (?i)NOPASSWD\s*:
     exclude_regex: []
+

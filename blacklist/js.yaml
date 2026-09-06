@@ -1,25 +1,27 @@
-# blacklist/js.yaml — JavaScript 危险模式黑名单（与 rules 格式一致；出现即判不通过）
+# blacklist/js.yaml — JavaScript/Node hard-banned patterns
 
 - id: BLJ-001
   name: js_dom_xss_from_location
   severity: high
   cwe: CWE-79
-  message: 将 location/URL/window.name 等 URL 源直接写入 innerHTML（DOM XSS，无商量余地）
-  fix_hint: 绝不允许把 location.href/search/hash、document.URL、window.name 直接写入 innerHTML；解析参数用 URLSearchParams + textContent。
+  message: "URL source (location/document.URL/window.name) written into innerHTML (DOM XSS - no exception) | 将 location/URL/window.name 等 URL 源直接写入 innerHTML（DOM XSS，无商量余地）"
+  fix_hint: "Never write location.href/search/hash, document.URL or window.name into innerHTML; parse with URLSearchParams + textContent. | 绝不允许把 location.href/search/hash、document.URL、window.name 直接写入 innerHTML；解析参数用 URLSearchParams + textContent。"
   match:
     regex:
       - >-
         (?i)\.innerHTML\s*=[^;\n]*(location\.(href|search|hash|pathname)|document\.(URL|documentURI|baseURI)|window\.name)
     exclude_regex: []
 
+
 - id: BLJ-002
   name: node_proto_pollution_merge
   severity: high
   cwe: CWE-1321
-  message: 直接用用户输入做深层合并（原型污染，无商量余地）
-  fix_hint: 禁止将 JSON.parse(req.body) 结果直接 merge/deep-extend 进对象；合并前过滤 __proto__/constructor 键。
+  message: "User input deep-merged into objects (prototype pollution - no exception) | 直接用用户输入做深层合并（原型污染，无商量余地）"
+  fix_hint: "Never deep-merge JSON.parse(req.body)-style results into objects; filter __proto__/constructor keys before merging. | 禁止将 JSON.parse(req.body) 结果直接 merge/deep-extend 进对象；合并前过滤 __proto__/constructor 键。"
   match:
     regex:
       - >-
         (?i)(merge|deepMerge|\.extend|Object\.assign)\s*\([^)]*JSON\.parse\s*\([^)]*(req\.(query|body|params)|payload|input)
     exclude_regex: []
+

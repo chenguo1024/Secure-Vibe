@@ -1,12 +1,11 @@
-# rules/cpp.yaml — C++ 特有安全规则（在 c.yaml 基础上叠加，继承链自动加载 C 规则）
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+# rules/cpp.yaml — C++-specific rules (loaded on top of c.yaml via inheritance)
 
 - id: CPP-001
   name: cpp_std_unsafe_c_funcs
   severity: high
   cwe: CWE-787
-  message: "通过 std:: 命名空间调用已弃用的不安全 C 函数（缓冲区溢出风险）"
-  fix_hint: "使用 snprintf/strncpy 限界写入，或直接用 std::string/std::string_view 管理字符串；禁止 std::strcpy/std::sprintf。"
+  message: "std::-namespace calls of deprecated unsafe C functions (buffer overflow) | 通过 std:: 命名空间调用已弃用的不安全 C 函数（缓冲区溢出风险）"
+  fix_hint: "Use snprintf/strncpy with bounds or std::string/std::string_view; never std::strcpy/std::sprintf/std::gets/std::sscanf. | 使用 snprintf/strncpy 限界写入，或直接用 std::string/std::string_view 管理字符串；禁止 std::strcpy/std::sprintf。"
   template: safe_cpp_io
   match:
     regex:
@@ -14,14 +13,16 @@
         std::\s*(strcpy|strcat|sprintf|gets|sscanf)\s*\(
     exclude_regex: []
 
+
 - id: CPP-002
   name: cpp_system_concat
   severity: high
   cwe: CWE-78
-  message: 通过字符串拼接构造命令并执行（命令注入风险）
-  fix_hint: 命令必须为编译期常量；参数化执行用 execve(argv 数组)。C++ 用 std::string 拼接后传入 system 同样危险，用户输入必须白名单校验。
+  message: "Command built via string concatenation and then executed (command injection) | 通过字符串拼接构造命令并执行（命令注入风险）"
+  fix_hint: "The command must be a compile-time constant; use execve(argv array) for parameterized execution; whitelist any user input. | 命令必须为编译期常量；参数化执行用 execve(argv 数组)。C++ 用 std::string 拼接后传入 system 同样危险，用户输入必须白名单校验。"
   match:
     regex:
       - >-
         (?i)\b(system|popen)\s*\([^)]*\+
     exclude_regex: []
+

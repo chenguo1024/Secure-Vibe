@@ -1,4 +1,4 @@
-"""tests/test_ci.py — GitHub Actions 工作流规则测试."""
+"""tests/test_ci.py — GitHub Actions workflow rule tests."""
 import sys
 from pathlib import Path
 

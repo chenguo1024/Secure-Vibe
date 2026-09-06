@@ -1,13 +1,11 @@
-# rules/php.yaml — PHP 特有安全规则（正则引擎；纯 PHP + 通用 Web 场景）
-# php 通过继承链自动加载 general + html + js + 本文件（混合模板中的 HTML/JS 片段同样被覆盖）。
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误（cpp.yaml 的教训）。
+# rules/php.yaml — PHP-specific security rules (plain PHP + generic web)
 
 - id: PHP-001
   name: php_shell_exec
   severity: high
   cwe: CWE-78
-  message: 使用 shell_exec/exec/system/passthru 执行系统命令（命令注入风险）
-  fix_hint: 使用 escapeshellarg() 转义参数并用固定命令白名单；绝不让用户输入进入命令字符串；反引号执行同等危险。
+  message: "shell_exec/exec/system/passthru command execution (command injection risk) | 使用 shell_exec/exec/system/passthru 执行系统命令（命令注入风险）"
+  fix_hint: "Escape arguments with escapeshellarg() and use a fixed command whitelist; never let user input enter the command string; backtick execution is equally dangerous. | 使用 escapeshellarg() 转义参数并用固定命令白名单；绝不让用户输入进入命令字符串；反引号执行同等危险。"
   match:
     regex:
       - >-
@@ -18,12 +16,13 @@
       - >-
         escapeshell(cmd|arg)\s*\(
 
+
 - id: PHP-002
   name: php_eval_assert
   severity: high
   cwe: CWE-95
-  message: 使用 eval/assert 动态执行代码（代码注入风险）
-  fix_hint: 禁止 eval/assert 处理不可信输入；用 json_decode 解析数据，用显式逻辑分发替代动态求值。
+  message: "eval/assert dynamic code execution (code injection risk) | 使用 eval/assert 动态执行代码（代码注入风险）"
+  fix_hint: "Never eval/assert untrusted input; parse data with json_decode; dispatch logic explicitly instead of dynamic evaluation. | 禁止 eval/assert 处理不可信输入；用 json_decode 解析数据，用显式逻辑分发替代动态求值。"
   match:
     regex:
       - >-
@@ -32,12 +31,13 @@
         (?<![\w$])assert\s*\(
     exclude_regex: []
 
+
 - id: PHP-003
   name: php_sql_concat_superglobal
   severity: high
   cwe: CWE-89
-  message: SQL 语句拼接超全局变量（SQL 注入风险）
-  fix_hint: 使用 PDO/mysqli 预处理语句（prepare + bind_param/execute 参数数组）；禁止 " . $_GET 等拼接进 SQL。
+  message: "SQL statement built by concatenating superglobals (SQL injection risk) | SQL 语句拼接超全局变量（SQL 注入风险）"
+  fix_hint: "Use PDO/mysqli prepared statements (prepare + bind_param/execute); never concatenate $_GET/$_POST-style values into SQL. | 使用 PDO/mysqli 预处理语句（prepare + bind_param/execute 参数数组）；禁止 \" . $_GET 等拼接进 SQL。"
   match:
     regex:
       - >-
@@ -46,36 +46,39 @@
         (?i)["'](SELECT|INSERT|UPDATE|DELETE)[^"']*["']\s*\.\s*\$_(GET|POST|REQUEST|COOKIE)
     exclude_regex: []
 
+
 - id: PHP-004
   name: php_unserialize_superglobal
   severity: high
   cwe: CWE-502
-  message: unserialize 处理超全局输入（PHP 对象注入，RCE 风险）
-  fix_hint: "不要对用户输入 unserialize；用 json_decode 交换数据。必须反序列化时使用 allowed_classes: false 并严格白名单。"
+  message: "unserialize on superglobal input (PHP object injection / RCE) | unserialize 处理超全局输入（PHP 对象注入，RCE 风险）"
+  fix_hint: "Never unserialize user input; exchange data with json_decode. If unavoidable use allowed_classes: false with a strict whitelist. | 不要对用户输入 unserialize；用 json_decode 交换数据。必须反序列化时使用 allowed_classes: false 并严格白名单。"
   match:
     regex:
       - >-
         unserialize\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)
     exclude_regex: []
 
+
 - id: PHP-005
   name: php_include_variable
   severity: high
   cwe: CWE-98
-  message: include/require 使用变量路径（文件包含 LFI/RFI 风险）
-  fix_hint: 路径必须为编译期常量白名单（switch 分发到固定文件名）；用户输入先做 basename+白名单校验，禁止直接拼接路径。
+  message: "include/require with a variable path (file inclusion LFI/RFI risk) | include/require 使用变量路径（文件包含 LFI/RFI 风险）"
+  fix_hint: "Paths must be compile-time constant whitelists (switch over fixed filenames); validate user input with basename + whitelist; never concatenate paths directly. | 路径必须为编译期常量白名单（switch 分发到固定文件名）；用户输入先做 basename+白名单校验，禁止直接拼接路径。"
   match:
     regex:
       - >-
         (?i)\b(include|require)(_once)?\s*\(?\s*\$
     exclude_regex: []
 
+
 - id: PHP-006
   name: php_echo_superglobal_unescaped
   severity: high
   cwe: CWE-80
-  message: echo/print 直接输出超全局输入（XSS 风险）
-  fix_hint: 输出用户数据必须经 htmlspecialchars($v, ENT_QUOTES, 'UTF-8') 转义；URL 参数用 urlencode；JSON 输出用 json_encode。
+  message: "echo/print of superglobal input without escaping (XSS risk) | echo/print 直接输出超全局输入（XSS 风险）"
+  fix_hint: "Escape user output with htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); urlencode URL parameters; json_encode for JSON output. | 输出用户数据必须经 htmlspecialchars($v, ENT_QUOTES, 'UTF-8') 转义；URL 参数用 urlencode；JSON 输出用 json_encode。"
   match:
     regex:
       - >-
@@ -84,14 +87,16 @@
       - >-
         htmlspecialchars|htmlentities|intval|filter_var|urlencode|json_encode
 
+
 - id: PHP-007
   name: php_extract_overwrite
   severity: medium
   cwe: CWE-15
-  message: 使用 extract()（变量覆盖风险）
-  fix_hint: 禁止 extract() 用户输入；使用 EXTR_SKIP 标志或显式字段访问（$_GET['key']）。
+  message: "extract() used (variable overwrite risk) | 使用 extract()（变量覆盖风险）"
+  fix_hint: "Never extract() user input; use EXTR_SKIP or explicit field access ($_GET['key']). | 禁止 extract() 用户输入；使用 EXTR_SKIP 标志或显式字段访问（$_GET['key']）。"
   match:
     regex:
       - >-
         (?<![\w$\\])extract\s*\(
     exclude_regex: []
+

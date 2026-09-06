@@ -1,13 +1,11 @@
-# rules/python.yaml — Python 特定安全规则（AST + 正则双引擎）
-# 匹配字段说明见 core/validator.py 的 Rule 类文档。
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+# rules/python.yaml — Python-specific security rules (AST + regex + taint engines)
 
 - id: PY-001
   name: dangerous_eval_exec
   severity: high
   cwe: CWE-95
-  message: 使用 eval/exec 动态执行代码（代码注入风险）
-  fix_hint: 禁止 eval/exec 处理不可信输入。JSON 用 json.loads；表达式求值用 ast.literal_eval；动态逻辑用字典分发或显式 if/elif。
+  message: "Use of eval/exec to dynamically execute code (code injection risk) | 使用 eval/exec 动态执行代码（代码注入风险）"
+  fix_hint: "Never feed untrusted input to eval/exec. JSON -> json.loads; expression evaluation -> ast.literal_eval; dynamic logic -> dict dispatch or explicit if/elif. | 禁止 eval/exec 处理不可信输入。JSON 用 json.loads；表达式求值用 ast.literal_eval；动态逻辑用字典分发或显式 if/elif。"
   template: safe_eval_alt
   match:
     ast_calls:
@@ -19,13 +17,15 @@
         (?<![\w.])eval\s*\(
       - >-
         (?<![\w.])exec\s*\(
+    exclude_regex: []
+
 
 - id: PY-002
   name: os_system_shell
   severity: high
   cwe: CWE-78
-  message: 使用 os.system / os.popen 执行系统命令（命令注入风险）
-  fix_hint: 改用 subprocess.run(args_list, shell=False)，参数用列表传递避免 shell 解析；禁止拼接命令字符串。
+  message: "Use of os.system / os.popen to run system commands (command injection risk) | 使用 os.system / os.popen 执行系统命令（命令注入风险）"
+  fix_hint: "Use subprocess.run(args_list, shell=False) passing args as a list to avoid shell parsing; never concatenate command strings. | 改用 subprocess.run(args_list, shell=False)，参数用列表传递避免 shell 解析；禁止拼接命令字符串。"
   match:
     ast_calls:
       - os.system
@@ -35,13 +35,15 @@
         (?<![\w.])os\.system\s*\(
       - >-
         (?<![\w.])os\.popen\s*\(
+    exclude_regex: []
+
 
 - id: PY-003
   name: subprocess_shell_true
   severity: high
   cwe: CWE-78
-  message: subprocess 调用启用了 shell=True（命令注入风险）
-  fix_hint: 使用 shell=False（默认），命令和参数以列表形式传递：subprocess.run(["ls", "-l"], shell=False)。若必须 shell=True，须对输入做白名单校验并注释说明。
+  message: "subprocess invoked with shell=True (command injection risk) | subprocess 调用启用了 shell=True（命令注入风险）"
+  fix_hint: "Use shell=False (default) and pass command + args as a list: subprocess.run(['ls', '-l'], shell=False). If shell=True is unavoidable, whitelist-validate the input and comment why. | 使用 shell=False（默认），命令和参数以列表形式传递：subprocess.run([\"ls\", \"-l\"], shell=False)。若必须 shell=True，须对输入做白名单校验并注释说明。"
   match:
     ast_kwargs:
       subprocess.run: {shell: literal-true}
@@ -52,13 +54,15 @@
     regex:
       - >-
         (?i)shell\s*=\s*True
+    exclude_regex: []
+
 
 - id: PY-004
   name: unsafe_pickle
   severity: high
   cwe: CWE-502
-  message: 使用 pickle 反序列化不可信数据（远程代码执行风险）
-  fix_hint: 对外部数据使用 JSON（json.loads）等安全格式；pickle 仅用于可信内部数据且需注释说明。绝对不要 pickle.loads 网络输入。
+  message: "pickle deserialization of untrusted data (remote code execution risk) | 使用 pickle 反序列化不可信数据（远程代码执行风险）"
+  fix_hint: "Use JSON (json.loads) for external data; pickle only for trusted internal data with a comment; never pickle.loads network input. | 对外部数据使用 JSON（json.loads）等安全格式；pickle 仅用于可信内部数据且需注释说明。绝对不要 pickle.loads 网络输入。"
   match:
     ast_calls:
       - pickle.loads
@@ -75,12 +79,13 @@
       - >-
         yaml\.load\s*\([^)]*Loader\s*=\s*yaml\.SafeLoader
 
+
 - id: PY-005
   name: unsafe_yaml_load
   severity: medium
   cwe: CWE-502
-  message: 使用了不安全的 yaml.load（未指定 SafeLoader 或使用了 CLoader/FullLoader）
-  fix_hint: 使用 yaml.safe_load(data)，或 yaml.load(data, Loader=yaml.SafeLoader)。
+  message: "Unsafe yaml.load used (no SafeLoader or uses CLoader/FullLoader) | 使用了不安全的 yaml.load（未指定 SafeLoader 或使用了 CLoader/FullLoader）"
+  fix_hint: "Use yaml.safe_load(data) or yaml.load(data, Loader=yaml.SafeLoader). | 使用 yaml.safe_load(data)，或 yaml.load(data, Loader=yaml.SafeLoader)。"
   match:
     regex:
       - >-
@@ -89,12 +94,13 @@
       - >-
         SafeLoader|safe_load
 
+
 - id: PY-006
   name: unsafe_tempfile
   severity: medium
   cwe: CWE-377
-  message: 使用可预测的临时文件路径（竞争/符号链接风险）
-  fix_hint: 使用 tempfile.NamedTemporaryFile / tempfile.mkstemp 创建临时文件，不要自己拼接 /tmp 路径。
+  message: "Predictable temporary file paths (race/symlink risk) | 使用可预测的临时文件路径（竞争/符号链接风险）"
+  fix_hint: "Use tempfile.NamedTemporaryFile / tempfile.mkstemp; do not hard-join /tmp paths yourself. | 使用 tempfile.NamedTemporaryFile / tempfile.mkstemp 创建临时文件，不要自己拼接 /tmp 路径。"
   match:
     regex:
       - >-
@@ -105,12 +111,13 @@
       - >-
         tempfile\.
 
+
 - id: PY-007
   name: unsafe_deserialization_marshal
   severity: medium
   cwe: CWE-502
-  message: 使用 marshal 反序列化不可信数据
-  fix_hint: marshal 仅用于 Python 字节码缓存（.pyc），不要用于外部数据；ctypes 加载 DLL/SO 必须校验来源路径。
+  message: "marshal/unsafe deserialization of untrusted data | 使用 marshal 反序列化不可信数据"
+  fix_hint: "marshal is only for Python bytecode caches (.pyc), not external data; validate the source path when loading DLL/SO via ctypes. | marshal 仅用于 Python 字节码缓存（.pyc），不要用于外部数据；ctypes 加载 DLL/SO 必须校验来源路径。"
   match:
     ast_calls:
       - marshal.loads
@@ -118,13 +125,15 @@
     regex:
       - >-
         (?<![\w.])marshal\.loads?\s*\(
+    exclude_regex: []
+
 
 - id: PY-008
   name: flask_debug_true
   severity: medium
   cwe: CWE-489
-  message: Flask/Werkzeug 生产环境开启 debug 模式（调试器可远程执行代码）
-  fix_hint: 生产环境必须 debug=False；用环境变量控制：app.run(debug=os.environ.get("FLASK_DEBUG") == "1")。
+  message: "Flask/Werkzeug debug mode enabled (debugger can execute code remotely) | Flask/Werkzeug 生产环境开启 debug 模式（调试器可远程执行代码）"
+  fix_hint: "In production debug must be False; control it via env: app.run(debug=os.environ.get('FLASK_DEBUG') == '1'). | 生产环境必须 debug=False；用环境变量控制：app.run(debug=os.environ.get(\"FLASK_DEBUG\") == \"1\")。"
   match:
     ast_kwargs:
       app.run: {debug: literal-true}
@@ -138,12 +147,13 @@
       - >-
         os\.environ|getenv|FLASK_DEBUG
 
+
 - id: PY-009
   name: django_insecure_settings
   severity: medium
   cwe: CWE-489
-  message: Django settings 配置存在不安全项（DEBUG=True / 允许所有主机）
-  fix_hint: 生产环境 DEBUG=False；ALLOWED_HOSTS 配置明确域名列表，禁止 ["*"]。
+  message: "Django settings insecure (DEBUG=True / allow all hosts) | Django settings 配置存在不安全项（DEBUG=True / 允许所有主机）"
+  fix_hint: "In production DEBUG=False; set ALLOWED_HOSTS to an explicit domain list; never ['*']. | 生产环境 DEBUG=False；ALLOWED_HOSTS 配置明确域名列表，禁止 [\"*\"]。"
   match:
     regex:
       - >-
@@ -152,24 +162,26 @@
         (?i)ALLOWED_HOSTS\s*=\s*\[\s*["']\*["']\s*\]
     exclude_regex: []
 
+
 - id: PY-010
   name: unsafe_input_eval_chain
   severity: high
   cwe: CWE-78
-  message: input()/request 参数直接进入危险函数调用链
-  fix_hint: 用户输入必须经过校验/白名单处理后再使用；不要把 input()/request.args 直接传给 eval/exec/os.system。
+  message: "input()/request params flow directly into dangerous call chains | input()/request 参数直接进入危险函数调用链"
+  fix_hint: "Validate/whitelist user input before use; never pass input()/request.args directly to eval/exec/os.system. | 用户输入必须经过校验/白名单处理后再使用；不要把 input()/request.args 直接传给 eval/exec/os.system。"
   match:
     regex:
       - >-
         (?i)(eval|exec|os\.system|os\.popen|subprocess\.\w+)\s*\(\s*(input\s*\(|request\.(args|form|data|json|values|GET|POST))
     exclude_regex: []
 
+
 - id: PY-011
   name: ssrf_user_url
   severity: high
   cwe: CWE-918
-  message: HTTP 请求的 URL 来自用户输入（SSRF 风险）
-  fix_hint: 对目标 URL 做白名单（协议必须 http/https、域名固定、禁私网 IP/169.254.169.254）；禁止把用户输入直接传给 requests/urllib/httpx/aiohttp。
+  message: "HTTP request URL derived from user input (SSRF risk) | HTTP 请求的 URL 来自用户输入（SSRF 风险）"
+  fix_hint: "Whitelist target URLs (http/https only, fixed domains, block private ranges incl. 169.254.169.254); never pass user input directly to requests/urllib/httpx/aiohttp. | 对目标 URL 做白名单（协议必须 http/https、域名固定、禁私网 IP/169.254.169.254）；禁止把用户输入直接传给 requests/urllib/httpx/aiohttp。"
   match:
     regex:
       - >-
@@ -180,12 +192,13 @@
       - >-
         (https?://(?!localhost|127\.0\.0\.1)|["'][^"']*example\.com)
 
+
 - id: PY-012
   name: xxe_unsecure_parser
   severity: high
   cwe: CWE-611
-  message: 使用可被 XXE 攻击的 XML 解析（未禁用外部实体）
-  fix_hint: lxml 用 etree.XMLParser(resolve_entities=False)；标准库用 defusedxml；禁止 EntityResolver 加载外部 DTD/实体。
+  message: "XML parser vulnerable to XXE (external entities not disabled) | 使用可被 XXE 攻击的 XML 解析（未禁用外部实体）"
+  fix_hint: "lxml: etree.XMLParser(resolve_entities=False); stdlib: use defusedxml; never let parsers load external DTD/entities. | lxml 用 etree.XMLParser(resolve_entities=False)；标准库用 defusedxml；禁止 EntityResolver 加载外部 DTD/实体。"
   match:
     regex:
       - >-
@@ -194,12 +207,13 @@
       - >-
         (resolve_entities\s*=\s*False|defusedxml|no_network|resolve_entities=False)
 
+
 - id: PY-013
   name: ssti_template_injection
   severity: high
   cwe: CWE-1336
-  message: 使用可被模板注入（SSTI）的渲染（模板源或渲染函数含用户输入）
-  fix_hint: 用固定模板文件（render_template）而非 render_template_string/jinja2.Template(用户输入)；必须动态模板时白名单 template 名，绝不让用户输入进入模板语法。
+  message: "Template rendering vulnerable to SSTI (template source or render function takes user input) | 使用可被模板注入（SSTI）的渲染（模板源或渲染函数含用户输入）"
+  fix_hint: "Use fixed template files (render_template) instead of render_template_string/jinja2.Template(user input); whitelist template names; never let user input become template syntax. | 用固定模板文件（render_template）而非 render_template_string/jinja2.Template(用户输入)；必须动态模板时白名单 template 名，绝不让用户输入进入模板语法。"
   match:
     regex:
       - >-
@@ -210,12 +224,13 @@
         (?i)\b(from_string|render_string)\s*\(
     exclude_regex: []
 
+
 - id: PY-014
   name: path_traversal_user_path
   severity: high
   cwe: CWE-22
-  message: 文件/路径操作用户输入直接拼接（路径穿越风险）
-  fix_hint: 用 os.path.realpath + 前缀校验，或用白名单映射文件名；禁止把用户输入直接拼到文件路径。
+  message: "User input concatenated into file/path operations (path traversal risk) | 文件/路径操作用户输入直接拼接（路径穿越风险）"
+  fix_hint: "Use os.path.realpath + prefix check, or whitelist-mapped file names; never concatenate user input into file paths. | 用 os.path.realpath + 前缀校验，或用白名单映射文件名；禁止把用户输入直接拼到文件路径。"
   match:
     regex:
       - >-
@@ -226,12 +241,13 @@
       - >-
         realpath|abspath|safe_join|basename
 
+
 - id: PY-015
   name: zip_slip_extractall
   severity: high
   cwe: CWE-22
-  message: 解压时未校验成员路径（Zip Slip 路径穿越）
-  fix_hint: 解压前逐个校验成员名：realpath 必须在目标目录前缀内；tarfile 需用 filter 参数（如 tarfile.data_filter）或逐项路径校验。
+  message: "Archive extraction without member path validation (Zip Slip) | 解压时未校验成员路径（Zip Slip 路径穿越）"
+  fix_hint: "Validate that each member's realpath stays inside the destination prefix before extracting; for tarfile use a filter (e.g. tarfile.data_filter) or per-member checks. | 解压前逐个校验成员名：realpath 必须在目标目录前缀内；tarfile 需用 filter 参数（如 tarfile.data_filter）或逐项路径校验。"
   match:
     regex:
       - >-
@@ -242,12 +258,13 @@
         (?i)shutil\.unpack_archive\s*\(
     exclude_regex: []
 
+
 - id: PY-016
   name: nosql_operator_injection
   severity: high
   cwe: CWE-943
-  message: MongoDB 查询可能受用户输入运算符注入（NoSQL 注入）
-  fix_hint: 把用户输入强制转为字符串/类型化（str()），禁止递归合并 raw JSON 到查询对象；参数化查询（mongo 无原生绑定，需手动类型约束）。
+  message: "Mongo query may allow operator injection from user input (NoSQL injection) | MongoDB 查询可能受用户输入运算符注入（NoSQL 注入）"
+  fix_hint: "Coerce user input to typed values (str()); never deep-merge raw JSON into query objects; bind parameters manually. | 把用户输入强制转为字符串/类型化（str()），禁止递归合并 raw JSON 到查询对象；参数化查询（mongo 无原生绑定，需手动类型约束）。"
   match:
     regex:
       - >-
@@ -256,12 +273,13 @@
         (?i)\b(find|find_one|update_one|update_many|delete_one|delete_many)\s*\([^)]*(request\.(args|form|json|values)|input\s*\(|body|params)
     exclude_regex: []
 
+
 - id: PY-017
   name: orm_raw_query
   severity: high
   cwe: CWE-89
-  message: 使用 ORM 原生查询接口拼接用户输入（SQL 注入）
-  fix_hint: 用 ORM 的链式查询 API（filter/Q 对象）；确需 raw 时用参数绑定（cursor.execute(sql, params)），禁止 f-string/%/.format 拼用户输入。
+  message: "ORM raw query interface used with concatenated user input (SQL injection) | 使用 ORM 原生查询接口拼接用户输入（SQL 注入）"
+  fix_hint: "Use the ORM chaining API (filter/Q objects); for raw SQL use bound parameters (cursor.execute(sql, params)); never f-string/%/.format user input. | 用 ORM 的链式查询 API（filter/Q 对象）；确需 raw 时用参数绑定（cursor.execute(sql, params)），禁止 f-string/%/.format 拼用户输入。"
   match:
     regex:
       - >-
@@ -276,12 +294,13 @@
       - >-
         params=|\[.*\].*%
 
+
 - id: PY-018
   name: jwt_algorithm_none_or_confusion
   severity: high
   cwe: CWE-347
-  message: JWT 算法可疑（alg=none 或缺少算法白名单，算法混淆风险）
-  fix_hint: 解码必须显式 algorithms=[...] 且不含 none；编码/解码使用固定算法常量（如 HS256），禁止信任 header 里的 alg。
+  message: "Suspicious JWT algorithm (alg=none or missing algorithm whitelist - algorithm confusion) | JWT 算法可疑（alg=none 或缺少算法白名单，算法混淆风险）"
+  fix_hint: "Decode must pass algorithms=[...] explicitly and exclude none; fix a single algorithm constant (e.g. HS256); never trust the header's alg. | 解码必须显式 algorithms=[...] 且不含 none；编码/解码使用固定算法常量（如 HS256），禁止信任 header 里的 alg。"
   match:
     regex:
       - >-
@@ -290,12 +309,13 @@
         (?i)algorithms?\s*=\s*\[\s*["']none["']
     exclude_regex: []
 
+
 - id: PY-019
   name: cors_wildcard_with_credentials
   severity: medium
   cwe: CWE-346
-  message: CORS 配置可疑（Origin 反射/通配符，潜在源混淆）
-  fix_hint: "固定 Allow-Origin 白名单；禁止同时 Allow-Origin: * 与 Allow-Credentials: true；如需多源用代码校验白名单再回显 origin。"
+  message: "Suspicious CORS configuration (wildcard/reflected origin - origin confusion) | CORS 配置可疑（Origin 反射/通配符，潜在源混淆）"
+  fix_hint: "Use a fixed Allow-Origin whitelist; never combine Allow-Origin: * with Allow-Credentials: true; validate origins against a whitelist in code. | 固定 Allow-Origin 白名单；禁止同时 Allow-Origin: * 与 Allow-Credentials: true；如需多源用代码校验白名单再回显 origin。"
   match:
     regex:
       - >-
@@ -304,12 +324,13 @@
         (?i)allow_credentials\s*=\s*True.*origin|origin.*allow_credentials\s*=\s*True
     exclude_regex: []
 
+
 - id: PY-020
   name: open_redirect
   severity: medium
   cwe: CWE-601
-  message: 重定向目标来自用户输入（开放重定向）
-  fix_hint: 重定向目标用固定白名单（站内路径）；含 next/url/redirect 参数时校验以 / 开头且不含 //，或干脆不用用户输入的 URL。
+  message: "Redirect target derives from user input (open redirect) | 重定向目标来自用户输入（开放重定向）"
+  fix_hint: "Whitelist redirect targets (in-site paths); if next/url/redirect params are used require a leading / and reject //; ideally never use user-controlled URLs. | 重定向目标用固定白名单（站内路径）；含 next/url/redirect 参数时校验以 / 开头且不含 //，或干脆不用用户输入的 URL。"
   match:
     regex:
       - >-
@@ -322,12 +343,13 @@
       - >-
         url_for|reverse|["']/[^"']*["']
 
+
 - id: PY-021
   name: ml_deserialization
   severity: high
   cwe: CWE-502
-  message: 加载 ML 模型/数据文件使用不安全反序列化（pytorch/joblib/pandas/pickle）
-  fix_hint: torch.load 用 weights_only=True（或加载前校验来源）；joblib/pandas.read_pickle/dill 仅加载可信文件；绝不解包外部来源。
+  message: "ML model/data files loaded via unsafe deserialization (pytorch/joblib/pandas/pickle) | 加载 ML 模型/数据文件使用不安全反序列化（pytorch/joblib/pandas/pickle）"
+  fix_hint: "torch.load: weights_only=True (or verify the source); joblib/pandas.read_pickle/dill only on trusted files; never unpickle external input. | torch.load 用 weights_only=True（或加载前校验来源）；joblib/pandas.read_pickle/dill 仅加载可信文件；绝不解包外部来源。"
   match:
     regex:
       - >-
@@ -342,12 +364,13 @@
       - >-
         weights_only\s*=\s*True
 
+
 - id: PY-022
   name: regex_dos_user_input
   severity: medium
   cwe: CWE-1333
-  message: 正则作用于用户输入/含有嵌套量词（ReDoS 灾难性回溯风险）
-  fix_hint: 对用户输入用线性时间正则或先限制长度；避免 (a+)+ 这类嵌套量词；全文匹配改用 re.fullmatch 并对输入设上限。
+  message: "Regex applied to user input / nested quantifiers present (ReDoS catastrophic backtracking) | 正则作用于用户输入/含有嵌套量词（ReDoS 灾难性回溯风险）"
+  fix_hint: "Use linear-time regexes on user input or cap its length; avoid nested quantifiers like (a+)+; prefer re.fullmatch with input limits. | 对用户输入用线性时间正则或先限制长度；避免 (a+)+ 这类嵌套量词；全文匹配改用 re.fullmatch 并对输入设上限。"
   match:
     regex:
       - >-
@@ -357,3 +380,4 @@
     exclude_regex:
       - >-
         maxlen|\(.{0,
+

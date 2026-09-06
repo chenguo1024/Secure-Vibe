@@ -1,63 +1,66 @@
-# rules/html.yaml — HTML 特有安全规则（正则引擎；网页结构特有检测）
-# php 继承 html 规则（PHP 模板中的 HTML 片段同样被覆盖）。
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误（如 javascript: URL）。
+# rules/html.yaml — HTML-specific security rules (regex engine)
 
 - id: HTML-001
   name: html_inline_event_handler
   severity: medium
   cwe: CWE-79
-  message: 使用内联事件处理器（onclick/onerror 等，XSS 高发载体）
-  fix_hint: 用 addEventListener 绑定事件（外部 JS 文件），内容安全策略（CSP）也应禁用 unsafe-inline。
+  message: "Inline event handlers used (onclick/onerror etc. - a common XSS carrier) | 使用内联事件处理器（onclick/onerror 等，XSS 高发载体）"
+  fix_hint: "Bind events with addEventListener in external JS; CSP should also block unsafe-inline. | 用 addEventListener 绑定事件（外部 JS 文件），内容安全策略（CSP）也应禁用 unsafe-inline。"
   match:
     regex:
       - >-
         (?i)\son[a-z]+\s*=\s*["']
     exclude_regex: []
 
+
 - id: HTML-002
   name: html_javascript_url
   severity: high
   cwe: CWE-79
-  message: "使用 javascript: 伪协议 URL（XSS 风险）"
-  fix_hint: "href/action 用 https:// 或相对路径；需要 JS 行为时绑定事件监听，绝不用 javascript: URL。"
+  message: "javascript: pseudo-protocol URL used (XSS risk) | 使用 javascript: 伪协议 URL（XSS 风险）"
+  fix_hint: "href/action should be https:// or relative paths; bind event listeners for JS behavior, never javascript: URLs. | href/action 用 https:// 或相对路径；需要 JS 行为时绑定事件监听，绝不用 javascript: URL。"
   match:
     regex:
       - >-
         (?i)\b(href|src|action|formaction)\s*=\s*["']\s*javascript\s*:
     exclude_regex: []
 
+
 - id: HTML-003
   name: html_iframe_no_sandbox
   severity: medium
   cwe: CWE-1021
-  message: iframe 缺少 sandbox 属性（嵌入内容可执行脚本/同源访问）
-  fix_hint: iframe 必须加 sandbox 属性（最小权限组合，如 "allow-scripts" 按需），并配合 referrerpolicy="no-referrer"。
+  message: "iframe missing the sandbox attribute (embedded content can run scripts / same-origin access) | iframe 缺少 sandbox 属性（嵌入内容可执行脚本/同源访问）"
+  fix_hint: "Always add sandbox with a least-privilege set (e.g. allow-scripts only when needed) plus referrerpolicy=\"no-referrer\". | iframe 必须加 sandbox 属性（最小权限组合，如 \"allow-scripts\" 按需），并配合 referrerpolicy=\"no-referrer\"。"
   match:
     regex:
       - >-
         (?i)<iframe(?![^>]*\bsandbox\b)[^>]*>
     exclude_regex: []
 
+
 - id: HTML-004
   name: html_cdn_script_no_sri
   severity: medium
   cwe: CWE-353
-  message: 引用外部 CDN 脚本缺少 SRI 完整性校验（供应链风险）
-  fix_hint: 外链 <script src="https://..."> 必须加 integrity="sha384-..." 与 crossorigin="anonymous"；CDN 被劫持时 SRI 可阻止恶意代码执行。
+  message: "External CDN script without SRI integrity check (supply-chain risk) | 引用外部 CDN 脚本缺少 SRI 完整性校验（供应链风险）"
+  fix_hint: "External <script src=\"https://...\"> must carry integrity=\"sha384-...\" and crossorigin=\"anonymous\"; SRI blocks tampered CDN payloads. | 外链 <script src=\"https://...\"> 必须加 integrity=\"sha384-...\" 与 crossorigin=\"anonymous\"；CDN 被劫持时 SRI 可阻止恶意代码执行。"
   match:
     regex:
       - >-
         (?i)<script(?![^>]*\bintegrity\b)[^>]*\bsrc\s*=\s*["']https?://
     exclude_regex: []
 
+
 - id: HTML-005
   name: html_blank_no_noopener
   severity: low
   cwe: CWE-1022
-  message: target="_blank" 链接缺少 rel="noopener"（反向标签劫持风险）
-  fix_hint: 加 rel="noopener noreferrer"；否则新窗口可通过 window.opener 操纵原页面。
+  message: "target=\"_blank\" link without rel=\"noopener\" (reverse tabnabbing risk) | target=\"_blank\" 链接缺少 rel=\"noopener\"（反向标签劫持风险）"
+  fix_hint: "Add rel=\"noopener noreferrer\"; otherwise the new window can manipulate the opener page via window.opener. | 加 rel=\"noopener noreferrer\"；否则新窗口可通过 window.opener 操纵原页面。"
   match:
     regex:
       - >-
         (?i)<a\b(?![^>]*\brel\s*=)[^>]*\btarget\s*=\s*["']_blank["']
     exclude_regex: []
+

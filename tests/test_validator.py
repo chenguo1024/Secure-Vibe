@@ -1,7 +1,7 @@
-"""tests/test_validator.py — 校验器测试集.
+"""tests/test_validator.py — validator test suite.
 
-每个检测项覆盖 正向（应检出）+ 反向（安全代码不应误报）用例。
-运行: python -m pytest tests/ -q
+Each case covers positive (must detect) + negative (safe code must not false-positive) sides.
+Run: python -m pytest tests/ -q
 """
 import sys
 from pathlib import Path
@@ -23,7 +23,7 @@ def rule_ids(result):
 
 
 # ---------------------------------------------------------------------------
-# 危险函数调用
+    # dangerous function calls
 # ---------------------------------------------------------------------------
 
 MALICIOUS_CASES = [
@@ -37,102 +37,102 @@ MALICIOUS_CASES = [
     ("PY-003", "import subprocess\nsubprocess.run(cmd, shell=True)"),
     ("PY-003", "subprocess.call(args, shell=True)"),
     ("PY-003", "subprocess.Popen(cmd, shell=True)"),
-    # pickle 反序列化
+    # pickle deserialization
     ("PY-004", "import pickle\nobj = pickle.loads(data)"),
     ("PY-004", "pickle.load(open(path, 'rb'))"),
-    # SQL 拼接
+    # SQL concatenation
     ("GEN-005", "cur.execute(f\"SELECT * FROM users WHERE id={uid}\")"),
     ("GEN-005", "cur.execute(\"SELECT * FROM t WHERE id=%s\" % uid)"),
     ("GEN-005", "cur.execute(\"SELECT * FROM t WHERE n='{}'\".format(name))"),
-    ("GEN-005", "sql = f\"SELECT * FROM users WHERE name='{u}'\"\ncur.execute(sql)"),  # 变量赋值式拼接
-    # 硬编码密钥
+    ("GEN-005", "sql = f\"SELECT * FROM users WHERE name='{u}'\"\ncur.execute(sql)"),  # variable-assignment-style concatenation
+    # hardcoded secrets
     ("GEN-001", "API_KEY = \"sk-1234567890abcdef1234\""),
     ("GEN-001", "password = \"SuperSecret123\""),
     ("GEN-001", "aws_key = \"AKIAIOSFODNN7EXAMPLE\""),
     ("GEN-001", 'db_uri = "mysql://root:P@ssw0rd@localhost/db"'),
-    # 明文 HTTP
+    # plaintext HTTP
     ("GEN-002", "resp = requests.get(\"http://api.example.com/data\")"),
-    # 不安全随机
+    # insecure randomness
     ("GEN-003", "import random\ntoken = random.randint(100000, 999999)"),
     ("GEN-003", "random.choice(user_list)"),
-    # 弱哈希
+    # weak hashes
     ("GEN-004", "import hashlib\nhashlib.md5(data)"),
     ("GEN-004", "digest = hashlib.sha1(payload)"),
     # JWT / TLS
     ("GEN-007", "jwt.decode(token, options={'verify_signature': False})"),
     ("GEN-008", "requests.post(url, verify=False)"),
     ("GEN-008", "ctx = ssl._create_unverified_context()"),
-    # 敏感信息打印
+    # sensitive info in prints
     ("GEN-006", "print(\"password:\", user_password)"),
-    # yaml.load 未指定 Loader
+    # yaml.load without a Loader
     ("PY-005", "import yaml\ncfg = yaml.load(f)"),
     # Flask debug
     ("PY-008", "app.run(debug=True)"),
-    # input 直连危险函数
+    # input directly into a dangerous function
     ("PY-010", "eval(input())"),
-    # 动态访问危险内建（静态检测绕过，来自漏检上报闭环）
+    # dynamic access to dangerous builtins (static-analysis bypass, from the missed-detection loop)
     ("BL-005", 'getattr(builtins, "eval")(x)'),
     ("BL-005", 'getattr(__builtins__, "exec")(code)'),
     ("BL-005", '__builtins__["open"]("/etc/passwd")'),
 ]
 
 SAFE_CASES = [
-    # 参数化 SQL
+    # parameterized SQL
     "cur.execute(\"SELECT * FROM users WHERE id=?\", (uid,))",
     "cur.execute(\"SELECT * FROM users WHERE id=%s\", [uid])",
-    # secrets 安全随机
+    # secrets safe randomness
     "import secrets\ntoken = secrets.token_urlsafe(32)",
-    # 强哈希
+    # strong hash
     "import hashlib\nhashlib.sha256(data).hexdigest()",
     "hashlib.pbkdf2_hmac('sha256', pwd, salt, 600000)",
-    # 环境变量密钥
+    # secrets from env vars
     "api_key = os.environ.get('API_KEY')",
     "password = config['password']",
     # https
     "resp = requests.get('https://api.example.com/data')",
-    "resp = requests.get('http://localhost:8080/debug')  # 本地调试",
+        "resp = requests.get('http://localhost:8080/debug')  # local debugging",
     # subprocess shell=False
     "subprocess.run(['ls', '-l'], shell=False)",
     "subprocess.run(['ls', '-l'])",
-    # eval 安全替代
+    # safe eval alternative
     "import ast\nvalue = ast.literal_eval(expr)",
     "import json\nobj = json.loads(text)",
     # yaml safe_load
     "import yaml\ncfg = yaml.safe_load(f)",
     "cfg = yaml.load(f, Loader=yaml.SafeLoader)",
-    # JWT 正确校验
+    # correct JWT verification
     "payload = jwt.decode(token, key, algorithms=['HS256'])",
-    # TLS 默认校验（字面量固定 URL 不被 SSRF 规则误报）
+    # default TLS verification (a literal fixed URL must not trip the SSRF rule)
     "requests.get(\"https://api.example.com/health\")",
-    # Flask debug 环境变量控制
+    # Flask debug controlled via env var
     "app.run(debug=os.environ.get('FLASK_DEBUG') == '1')",
-    # 注释/字符串中的可疑词不误报
-    "# 使用 secrets 而不是 random 模块",
+    # suspicious words inside comments/strings must not false-positive
+    "# use secrets instead of the random module",
     "docstring = 'we use eval-free approach'",
-    # 占位符不算硬编码
+    # placeholders do not count as hardcoded secrets
     'API_KEY = "YOUR_API_KEY_HERE"',
     'password = os.getenv("DB_PASSWORD")',
-    # pickle 用于可信内部数据但无网络输入痕迹（仍报但非 BL-004）
+    # pickle on trusted internal data without network trace (still flagged, but not BL-004)
 ]
 
 
 @pytest.mark.parametrize("rule_id,code", MALICIOUS_CASES, ids=[c[0] for c in MALICIOUS_CASES])
 def test_detects_violations(v: Validator, rule_id: str, code: str):
     result = v.validate(code)
-    assert not result.passed, f"应检出违规但通过: {code!r}\n{result.summary()}"
+    assert not result.passed, f"should detect a violation but passed: {code!r}\n{result.summary()}"
     assert rule_id in rule_ids(result), (
-        f"应命中 {rule_id}，实际命中 {rule_ids(result)}\n{result.summary()}"
+            f"expected {rule_id}, got {rule_ids(result)}\n{result.summary()}"
     )
 
 
 @pytest.mark.parametrize("code", SAFE_CASES)
 def test_safe_code_passes(v: Validator, code: str):
     result = v.validate(code)
-    assert result.passed, f"安全代码被误报:\n{code!r}\n{result.summary()}"
+    assert result.passed, f"safe code false-positived:\n{code!r}\n{result.summary()}"
 
 
 # ---------------------------------------------------------------------------
-# 行为细节
+    # behavioral details
 # ---------------------------------------------------------------------------
 
 def test_violation_has_location_and_hint(v: Validator):
@@ -153,11 +153,11 @@ def test_severity_levels(v: Validator):
 
 
 def test_syntax_error_code_still_checked_by_regex(v: Validator):
-    # AST 解析失败时正则引擎仍应工作（片段代码场景）
+    # the regex engine must still work when AST parsing fails (code-fragment scenarios)
     result = v.validate("def broken(:\n    os.system(cmd")
     assert not result.passed
     assert "PY-002" in rule_ids(result)
-    assert result.error  # 记录了语法错误
+    assert result.error  # the syntax error is recorded
 
 
 def test_validation_is_fast(v: Validator):
@@ -168,9 +168,9 @@ def test_validation_is_fast(v: Validator):
     t0 = time.perf_counter()
     v.validate(big_code)
     elapsed = (time.perf_counter() - t0) * 1000
-    # 500 行纯函数无违规代码；阈值放宽到 400ms 以容忍 CI/桌面机的负载波动
-    # （实测本机 150-260ms 区间波动，原 200ms 阈值贴边导致 flaky）
-    assert elapsed < 400, f"校验 500 行代码耗时 {elapsed:.0f}ms，超出预期"
+    # 500 lines of plain safe functions; the 400ms bound tolerates load variance on CI/desktops
+    # (measured 150-260ms jitter locally; the old 200ms bound was flaky)
+    assert elapsed < 400, f"validating 500 lines took {elapsed:.0f}ms, over budget"
 
 
 def test_custom_ignore_rules():
@@ -184,4 +184,4 @@ def test_summary_format(v: Validator):
     s = result.summary()
     assert s.startswith("FAIL")
     assert "PY-001" in s
-    assert "修复" in s
+    assert "fix" in s

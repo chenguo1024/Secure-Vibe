@@ -1,4 +1,4 @@
-"""tests/test_python_adv.py — Python 深度规则（SSRF/XXE/SSTI/路径/ML/JWT/CORS/NosQL 等）."""
+"""tests/test_python_adv.py — Python deep rules (SSRF/XXE/SSTI/path/ML/JWT/CORS/NoSQL etc.)."""
 import sys
 from pathlib import Path
 
@@ -15,7 +15,7 @@ def ids(result):
     return {x.rule_id for x in result.violations}
 
 
-# --- P0: 深度规则恶意用例检出 ---
+# --- P0: deep-rule malicious detections ---
 
 def test_ssrf_user_url():
     r = py("import requests\nresp = requests.get(user_url)")
@@ -23,7 +23,7 @@ def test_ssrf_user_url():
 
 
 def test_ssrf_metadata_blacklist():
-    # 云元数据地址（BL-007）
+    # cloud metadata address (BL-007)
     r = py('requests.get("http://169.254.169.254/latest/meta-data")')
     assert "BL-007" in ids(r)
 
@@ -78,7 +78,7 @@ def test_ml_deserialization_joblib_pandas():
     assert "PY-021" in ids(r)
 
 
-# --- P0: 安全等价做法零误报 ---
+# --- P0: safe equivalents, zero false positives ---
 
 def test_torch_weights_only_passes():
     r = py("import torch\nmodel = torch.load(p, weights_only=True)")

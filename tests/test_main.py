@@ -1,4 +1,4 @@
-"""tests/test_main.py — 入口函数行为测试."""
+"""tests/test_main.py — entry-function behavior tests."""
 import sys
 from pathlib import Path
 
@@ -14,12 +14,13 @@ def test_validate_code_returns_result():
 
 
 def test_generate_without_backend_does_not_crash():
-    """回归：config 默认 backend=session 且未注入 session_fn 时，
-    应优雅降级为 mock 而非抛 ValueError（曾导致 main.py --task 崩溃）。"""
+    """Regression: with the default backend=session and no session_fn injected, the call must
+    gracefully degrade to mock instead of raising ValueError (used to crash main.py --task)."""
     outcome = main.generate_secure_code(task_description="返回两数之和")
     assert outcome is not None
     assert hasattr(outcome, "passed")
-    # 无后端注入时走了 mock（返回的是预置代码），结果要么通过要么需人工修复，但绝不应抛异常
+    # with no backend injected the mock runs (preset code); the outcome passes or needs human
+    # review - but must never raise
     assert outcome.passed or outcome.needs_human_review
 
 
@@ -29,7 +30,7 @@ def test_validate_safe_code_passes():
 
 
 def test_cli_validate_exit_codes():
-    """SKILL.md 约定的 exit code 契约：0=通过 1=违规 2=错误/语法错误。"""
+    """The exit-code contract promised by SKILL.md: 0=pass 1=violations 2=error/syntax."""
     import json
     import subprocess
     py = sys.executable
@@ -41,17 +42,17 @@ def test_cli_validate_exit_codes():
                            text=True, encoding="utf-8", cwd=str(root), timeout=30)
         return p.returncode, p.stdout
 
-    # exit 0: 安全代码
+    # exit 0: safe code
     rc, _ = run("validate", "--code", "import secrets\ntoken = secrets.token_urlsafe(32)")
     assert rc == 0
-    # exit 1: 违规
+    # exit 1: violations
     rc, out = run("validate", "--code", "x = eval(input())")
     assert rc == 1
     assert json.loads(out)["violations"]
-    # exit 2: 文件不存在
+    # exit 2: file not found
     rc, out = run("validate", "--file", "Z:/no/such/file.py")
     assert rc == 2 and "file not found" in out
-    # exit 2: 纯语法错误（回归：曾返回 0/passed，导致未解析代码被记为通过）
+    # exit 2: pure syntax error (regression: it used to return 0/passed, logging unparsable code as passing)
     bad = root / ".tmp_syntax_bad.py"
     bad.write_text("def broken(:", encoding="utf-8")
     try:

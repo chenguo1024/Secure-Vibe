@@ -1,18 +1,18 @@
-"""mine_cwe_rules.py — 从 GHSA/CVE 数据集挖掘 CWE→修复措施映射，更新 rules/cwe_reference.yaml.
+"""mine_cwe_rules.py — Mine CWE->remediation mappings from GHSA/CVE datasets and update rules/cwe_reference.yaml.
 
-数据来源（任选其一，均为本地 JSONL/JSON 文件）:
-  1. GHSA-CySec (ModelScope: couvor/GHSA-CySec) — 需在 ModelScope 申请后下载
-     modelscope download --dataset couvor/GHSA-CySec --local_dir <路径>
-  2. 任意含 {cwe, fix/remediation} 字段的 JSONL（如日志中人工沉淀的修复记录）
+Data sources (pick one; all are local JSONL/JSON files):
+  1. GHSA-CySec (ModelScope: couvor/GHSA-CySec) — apply for access on ModelScope, then download
+     modelscope download --dataset couvor/GHSA-CySec --local_dir <path>
+  2. any JSONL with {cwe, fix/remediation} fields (e.g. human-curated fixes from your logs)
 
-用法:
-    python tools/mine_cwe_rules.py <数据集文件或目录> [--out rules/cwe_reference.yaml]
+Usage:
+      python tools/mine_cwe_rules.py <dataset file or dir> [--out rules/cwe_reference.yaml]
 
-行为:
-    - 解析每条样本的 CWE 编号与修复文本
-    - 聚合出每个 CWE 的 description（取众数文本）/ fix_direction（修复建议合并）
-    - 与现有 rules/cwe_reference.yaml 合并（已存在的 CWE 只补 fix_direction，不覆盖）
-    - 变更写入文件并标注 provenance
+Behavior:
+    - parse each sample's CWE ids and fix text
+    - aggregate each CWE's description (majority text) / fix_direction (merged fix advice)
+    - merge into the existing rules/cwe_reference.yaml (existing CWEs only gain fix_direction, never overwritten)
+    - write the changes and annotate provenance
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print("需要 pyyaml: pip install pyyaml", file=sys.stderr)
+    print("pyyaml required: pip install pyyaml", file=sys.stderr)
     sys.exit(2)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -35,7 +35,7 @@ CWE_PATTERN = re.compile(r"CWE[-_ ]?(\d{1,4})", re.IGNORECASE)
 
 
 def iter_samples(path: Path):
-    """遍历数据集文件（JSONL 或 JSON 数组），逐条产出 dict。"""
+    """Iterate a dataset file (JSONL or JSON array) yielding dicts one by one."""
     files = [path] if path.is_file() else [p for p in path.rglob("*") if p.suffix in (".jsonl", ".json")]
     for f in files:
         try:
@@ -56,20 +56,20 @@ def iter_samples(path: Path):
                 if isinstance(data, list):
                     yield from (x for x in data if isinstance(x, dict))
                 elif isinstance(data, dict):
-                    # 兼容嵌套结构（GHSA-CySec 的 ChatML: content 字段内含 CWE 文本）
+                    # tolerate nested structures (GHSA-CySec ChatML: CWE text inside the content field)
                     yield data
             except json.JSONDecodeError:
                 continue
 
 
 def extract_cwe(sample: dict) -> set[str]:
-    """从样本字段中提取 CWE 编号集合。"""
+    """Extract the set of CWE ids from a sample's fields."""
     blob = " ".join(str(v) for v in sample.values() if isinstance(v, (str, int)))
     return {f"CWE-{m}" for m in set(CWE_PATTERN.findall(blob))}
 
 
 def extract_fix(sample: dict) -> str:
-    """提取修复相关文本（启发式字段名匹配）。"""
+    """Extract fix-related text (heuristic field-name matching)."""
     keys = ("fix", "remediation", "remedy", "solution", "mitigation", "response", "output")
     for k in keys:
         v = sample.get(k)
@@ -83,7 +83,7 @@ def extract_fix(sample: dict) -> str:
 
 
 def mine(source: Path) -> dict[str, dict]:
-    """返回 {CWE-XXX: {description_count, fix_directions: Counter}}。"""
+    """Return {CWE-XXX: {description_count, fix_directions: Counter}}."""
     stats: dict[str, dict] = defaultdict(lambda: {"desc": Counter(), "fix": Counter()})
     n = 0
     for sample in iter_samples(source):
@@ -94,16 +94,16 @@ def mine(source: Path) -> dict[str, dict]:
         fix = extract_fix(sample)
         for cwe in cwes:
             stats[cwe]["fix"][fix[:500]] += 1 if fix else 0
-            # ChatML 结构: description 取 role=system 的 content 片段
+            # ChatML structure: description comes from role=system content fragments
             desc = sample.get("description") or sample.get("overview") or ""
             if isinstance(desc, str) and desc:
                 stats[cwe]["desc"][desc[:500]] += 1
-    print(f"扫描样本: {n} 条，命中 CWE: {len(stats)} 个")
+    print(f"samples scanned: {n}, distinct CWEs hit: {len(stats)}")
     return stats
 
 
 def merge(stats: dict[str, dict], ref_path: Path) -> list[str]:
-    """与现有 cwe_reference.yaml 合并，返回变更的 CWE 列表。"""
+    """Merge with the existing cwe_reference.yaml; returns the list of changed CWEs."""
     existing = {}
     if ref_path.is_file():
         data = yaml.safe_load(ref_path.read_text(encoding="utf-8")) or {}
@@ -116,7 +116,7 @@ def merge(stats: dict[str, dict], ref_path: Path) -> list[str]:
         if cwe in existing:
             entry = existing[cwe]
             if top_fix and top_fix not in entry.get("fix_direction", ""):
-                entry["fix_direction"] = f"{entry.get('fix_direction', '')} | 数据集补充: {top_fix[:200]}"
+                entry["fix_direction"] = f"{entry.get('fix_direction', '')} | dataset-derived: {top_fix[:200]}"
                 entry.setdefault("mined_from", []).append(top_fix[:300])
                 changed.append(cwe)
         else:
@@ -124,7 +124,7 @@ def merge(stats: dict[str, dict], ref_path: Path) -> list[str]:
                 "id": cwe,
                 "name": "mined_" + cwe.lower().replace("-", "_"),
                 "severity": "medium",
-                "description": top_desc or "（从数据集挖掘，待人工补充）",
+                "description": top_desc or "(dataset-mined, awaiting manual fill)",
                 "fix_direction": top_fix or "",
                 "mined_from": [top_fix[:300]],
             }
@@ -137,9 +137,9 @@ def merge(stats: dict[str, dict], ref_path: Path) -> list[str]:
 
 
 def mine_from_logs(log_dir: Path) -> dict[str, dict]:
-    """从 logs/*.jsonl 的 missed_pattern 记录挖掘规则候选。
+    """Mine rule candidates from missed_pattern records in logs/*.jsonl.
 
-    返回 {pattern: {desc: Counter, fix: Counter}}，供 merge 或单独审阅。
+    Returns {pattern: {desc: Counter, fix: Counter}} for merging or standalone review.
     """
     stats: dict[str, dict] = defaultdict(lambda: {"desc": Counter(), "fix": Counter()})
     files = list(log_dir.glob("*.jsonl")) if log_dir.is_dir() else []
@@ -160,40 +160,40 @@ def mine_from_logs(log_dir: Path) -> dict[str, dict]:
             if not pat:
                 continue
             stats[pat]["desc"]["missed_by_validator"] += 1
-            stats[pat]["fix"][rec.get("note") or "待人工审核"] += 1
-    print(f"从日志挖掘漏检模式: {n} 条，去重后 {len(stats)} 个模式")
+            stats[pat]["fix"][rec.get("note") or "awaiting manual review"] += 1
+    print(f"log-mined missed patterns: {n} records, {len(stats)} distinct patterns")
     return stats
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="从 GHSA/CVE 数据集或本地日志挖掘 CWE→修复映射")
-    ap.add_argument("source", nargs="?", help="数据集文件或目录（JSONL/JSON）；与 --from-logs 二选一")
+    ap = argparse.ArgumentParser(description="mine CWE->fix mappings from GHSA/CVE datasets or local logs")
+    ap.add_argument("source", nargs="?", help="dataset file or dir (JSONL/JSON); either this or --from-logs")
     ap.add_argument("--out", default=str(PROJECT_ROOT / "rules" / "cwe_reference.yaml"))
-    ap.add_argument("--from-logs", action="store_true", help="从 logs/*.jsonl 的 missed_pattern 记录挖掘")
+    ap.add_argument("--from-logs", action="store_true", help="mine from missed_pattern records in logs/*.jsonl")
     args = ap.parse_args()
 
     if args.from_logs:
         stats = mine_from_logs(PROJECT_ROOT / "logs")
         if not stats:
-            print("logs/ 中暂无 missed_pattern 记录。先通过 cli.py missed 上报漏检模式。")
+            print("no missed_pattern records in logs/ yet. Report missed patterns via cli.py missed first.")
             return 0
-        # 输出审核清单（不直接写入 cwe_reference.yaml，保留人工审核闸口）
+        # emit a review list (never written straight into cwe_reference.yaml; the human review gate stays)
         out_path = PROJECT_ROOT / "logs" / "pending_rules.json"
         out_path.write_text(json.dumps(
             {p: {"note": next(iter(s["fix"]), "")} for p, s in stats.items()},
             ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"漏检模式审核清单: {out_path}")
+        print(f"missed-pattern review list: {out_path}")
         for p, s in stats.items():
-            print(f"  - {p[:70]}  ({s['desc']['missed_by_validator']} 次)")
+            print(f"  - {p[:70]}  ({s['desc']['missed_by_validator']} times)")
         return 0
 
     src = Path(args.source) if args.source else None
     if not src or not src.exists():
-        print(f"数据源不存在: {src}", file=sys.stderr)
+        print(f"data source not found: {src}", file=sys.stderr)
         return 2
     stats = mine(src)
     changed = merge(stats, Path(args.out))
-    print(f"更新 {args.out}: 新增/补充 {len(changed)} 个 CWE")
+    print(f"updated {args.out}: {len(changed)} CWE(s) added/completed")
     for cwe in changed[:20]:
         print(f"  - {cwe}")
     return 0

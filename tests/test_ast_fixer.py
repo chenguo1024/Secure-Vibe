@@ -1,4 +1,4 @@
-"""tests/test_ast_fixer.py — AST 确定性修复引擎测试."""
+"""tests/test_ast_fixer.py — AST deterministic fix engine tests."""
 import sys
 from pathlib import Path
 
@@ -66,7 +66,7 @@ def test_hardcoded_secret_to_env():
     assert "import os" in new
     assert "os.environ.get('API_KEY', '')" in new
     assert "sk-hardcoded" not in new
-    # 修复后不再有硬编码密钥违规（print len 而非值，无敏感打印）
+    # after the fix there is no hardcoded-secret violation (print the length, not the value)
     v = Validator("python")
     assert v.validate(new).passed
 
@@ -101,7 +101,7 @@ def test_multi_rule_single_pass():
 def test_code_with_docstring_keeps_it():
     code = '"""module doc"""\n' + 'API_KEY = "sk-hardcoded-secret-1234567890"\n'
     new, applied, _ = fix_of(code)
-    # docstring 保留在最前
+    # the docstring stays at the top
     assert new.lstrip().startswith('"""module doc"""')
     assert "import os" in new
     assert "os.environ.get" in new

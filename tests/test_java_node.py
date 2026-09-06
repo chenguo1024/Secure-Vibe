@@ -1,4 +1,4 @@
-"""tests/test_java_node.py — Java(Spring) 与 Node.js 规则测试."""
+"""tests/test_java_node.py — Java (Spring) and Node.js rule tests."""
 import sys
 from pathlib import Path
 
@@ -16,7 +16,7 @@ def ids(result):
     return {x.rule_id for x in result.violations}
 
 
-# --- 语言归一化 ---
+# --- language normalization ---
 
 def test_language_normalization_node_java():
     assert normalize_language("nodejs") == "js"
@@ -24,7 +24,7 @@ def test_language_normalization_node_java():
     assert normalize_language("java") == "java"
 
 
-# --- Java 恶意用例检出 ---
+# --- Java malicious cases ---
 
 def test_java_detects_exec_concat():
     code = 'Runtime.getRuntime().exec("sh -c " + userInput);'
@@ -78,7 +78,7 @@ def test_java_prepared_statement_not_flagged():
     assert "JAVA-002" not in ids(r)
 
 
-# --- Node.js 恶意用例检出 ---
+# --- Node.js malicious cases ---
 
 def test_node_detects_exec_string():
     code = 'exec("sh -c " + userInput);'
@@ -111,12 +111,12 @@ def test_node_safe_passes():
 
 
 def test_node_inherited_by_html():
-    # html 继承 js 规则：内联脚本中的 child_process.exec 也应命中
+    # html inherits js rules: child_process.exec in an inline script must fire too
     code = '<script>exec("sh -c " + u);</script>'
     assert "JS-006" in ids(validate(code, "html"))
 
 
-# --- 上下文构建 ---
+# --- context building ---
 
 def test_prompts_java_uses_java_fewshot():
     system_prompt, _ = build_prompts("实现一个安全的订单查询服务", language="java")

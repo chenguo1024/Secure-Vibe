@@ -1,14 +1,14 @@
-"""repair_loop.py — 自动修正循环（混合策略）.
+"""repair_loop.py — Automatic repair loop (hybrid strategy).
 
-流程:
-  1. LLM 生成第一版代码
-  2. 校验器实时校验
-  3. 不通过 → 混合修复:
-     a) 高危项: 优先从 templates/ 做确定性替换（不走 LLM，零风险）
-        无法确定性替换时 → LLM 修复
-     b) 低/中危项: LLM 局部重写（只重写违规片段，非整段重生成）
-  4. 最多重试 max_retries 轮；仍失败 → 交付最佳版本 + 完整漏洞报告，
-     标记"需人工修复"（needs_human_review=True）
+Flow:
+  1. The LLM generates the first version of the code
+  2. The validator checks it in real time
+  3. On failure -> hybrid repair:
+     a) high-risk items: deterministic replacement from templates/ first (no LLM, zero risk);
+        when deterministic replacement is impossible -> LLM repair
+     b) low/medium items: LLM local rewrite (only the violating fragment, not a full regeneration)
+  4. Retry at most max_retries rounds; on repeated failure -> deliver the best version + a full
+     vulnerability report, marked "needs human review" (needs_human_review=True)
 """
 from __future__ import annotations
 
@@ -24,18 +24,18 @@ from core.validator import ValidationResult, Validator, Violation
 
 
 def _apply_deterministic_fixes(code: str, violations: list[Violation]) -> tuple[str, list[str]]:
-    """对可确定性修复的违规做 AST 节点级安全等价改写。
+    """Apply AST-node-level safe equivalent rewrites for deterministically fixable violations.
 
-    覆盖: insecure_random / weak_hash / unsafe_yaml_load / hardcoded_secret
-    （见 core/ast_fixer.py），返回 (新代码, 已应用的 rule_name 列表)。
+    Coverage: insecure_random / weak_hash / unsafe_yaml_load / hardcoded_secret
+    (see core/ast_fixer.py). Returns (new code, list of applied rule_names).
     """
     return deterministic_fix(code, violations)
 
 
 @dataclass
 class RepairRound:
-    """单轮修复记录。"""
-    round_no: int                     # 0 = 首次生成
+    """One repair round record."""
+    round_no: int                     # 0 = first generation
     code: str
     result: ValidationResult
     action: str = ""                  # generate / deterministic_fix / llm_repair / accepted
@@ -44,40 +44,40 @@ class RepairRound:
 
 @dataclass
 class GenerationOutcome:
-    """generate_secure_code 的最终输出。"""
-    code: str                         # 最终交付代码
-    passed: bool                      # 最终代码是否通过校验
-    needs_human_review: bool          # 重试超限仍失败 → True
+    """Final output of generate_secure_code."""
+    code: str                         # final delivered code
+    passed: bool                      # whether the final code passed validation
+    needs_human_review: bool          # True when retries were exhausted and still failing
     rounds: list[RepairRound] = field(default_factory=list)
-    report: str = ""                  # 失败时的完整漏洞报告
+    report: str = ""                  # full vulnerability report on failure
     total_retries: int = 0
     llm_calls: int = 0
     total_elapsed_ms: float = 0.0
 
     def summary(self) -> str:
-        status = "PASS" if self.passed else ("FAIL(需人工修复)" if self.needs_human_review else "FAIL")
+        status = "PASS" if self.passed else ("FAIL(needs human review)" if self.needs_human_review else "FAIL")
         return (
-            f"[{status}] 轮数={len(self.rounds)} 重试={self.total_retries} "
-            f"LLM调用={self.llm_calls} 耗时={self.total_elapsed_ms:.0f}ms"
+            f"[{status}] rounds={len(self.rounds)} retries={self.total_retries} "
+            f"llm_calls={self.llm_calls} elapsed={self.total_elapsed_ms:.0f}ms"
         )
 
 
 def _extract_code(llm_output: str, language: str = "python") -> str:
-    """从 LLM 输出中提取代码块；无代码块时原样返回。"""
+    """Extract the code block from LLM output; return as-is when none."""
     pattern = rf"```(?:{language})?\s*\n(.*?)```"
     m = re.search(pattern, llm_output, re.DOTALL)
     return m.group(1).strip() if m else llm_output.strip()
 
 
 def _strip_markdown_fence(code: str) -> str:
-    """容错：去掉未闭合的围栏标记。"""
+    """Tolerance: strip unclosed fence markers."""
     return re.sub(r"^```(?:python)?\s*\n?|```\s*$", "", code).strip()
 
 
 def _best_round(rounds: list[RepairRound]) -> RepairRound:
-    """挑选违规最少的一轮作为兜底交付（重试超限时用）。"""
+    """Pick the round with the fewest violations as the fallback delivery (retries exhausted)."""
     if not rounds:
-        raise ValueError("rounds 为空")
+        raise ValueError("rounds is empty")
     return min(rounds, key=lambda r: len(r.result.violations))
 
 
@@ -95,17 +95,17 @@ def generate_secure_code(
     templates_dir=None,
     on_round=None,
 ) -> GenerationOutcome:
-    """核心入口：生成 → 校验 → 混合修复循环。
+    """Core entry point: generate -> validate -> hybrid repair loop.
 
-    参数:
-        task_description: 用户任务描述
-        backend: LLM 后端（create_backend() 创建）
-        language / framework / context: 生成上下文
-        validator: 校验器实例（默认按语言新建）
-        max_retries: 最大修复轮数
-        strategy: hybrid（默认）| llm_only
-        on_round: 每轮回调 on_round(RepairRound)，供日志/进度使用
-    返回:
+    Args:
+        task_description: the user task description
+        backend: LLM backend (created via create_backend())
+        language / framework / context: generation context
+        validator: validator instance (built per language by default)
+        max_retries: maximum repair rounds
+        strategy: hybrid (default) | llm_only
+        on_round: per-round callback on_round(RepairRound), for logging/progress
+    Returns:
         GenerationOutcome
     """
     v = validator or Validator(language=language, rules_dir=rules_dir, blacklist_dir=blacklist_dir)
@@ -113,7 +113,7 @@ def generate_secure_code(
     rounds: list[RepairRound] = []
     llm_calls = 0
 
-    # ---- 第 0 轮：构建安全上下文并生成 ----
+    # ---- round 0: build the security context and generate ----
     system_prompt, user_prompt = build_prompts(
         task_description, language, framework, context,
         rules_dir=rules_dir, blacklist_dir=blacklist_dir, templates_dir=templates_dir,
@@ -128,12 +128,12 @@ def generate_secure_code(
     if on_round:
         on_round(r0)
 
-    # ---- 修复循环 ----
+    # ---- repair loop ----
     retries = 0
     while not result.passed and retries < max_retries:
         retries += 1
 
-        # a) 确定性修复（仅 hybrid 策略，毫秒级零风险）
+        # a) deterministic fix (hybrid strategy only; millisecond-scale, zero risk)
         if strategy == "hybrid":
             fixed_code, fixed_rules = _apply_deterministic_fixes(code, result.violations)
             if fixed_rules and fixed_code != code:
@@ -147,17 +147,17 @@ def generate_secure_code(
                 if result.passed:
                     break
 
-        # b) LLM 修复（混合策略下仅当确定性修复未解决时）
+        # b) LLM repair (hybrid strategy: only when deterministic fix did not resolve)
         high = result.has_high
         if strategy == "hybrid" and not high:
-            # 低/中危 → 局部重写 prompt
+            # low/medium -> local rewrite prompt
             vlines = "\n".join(
-                f"- 第{vl.line}行 [{vl.rule_id}] {vl.message} → {vl.fix_hint}"
+                f"- line {vl.line} [{vl.rule_id}] {vl.message} -> {vl.fix_hint}"
                 for vl in result.violations
             )
             repair_prompt = build_local_rewrite_prompt(code, vlines, language)
         else:
-            # 高危或 llm_only → 完整修复 prompt
+            # high severity or llm_only -> full repair prompt
             repair_prompt = build_repair_prompt(code, result.summary(), language)
 
         llm_calls += 1
@@ -170,7 +170,7 @@ def generate_secure_code(
         if on_round:
             on_round(rd)
 
-    # ---- 收尾 ----
+    # ---- wrap-up ----
     total_ms = (time.perf_counter() - t0) * 1000
     if result.passed:
         return GenerationOutcome(
@@ -179,17 +179,17 @@ def generate_secure_code(
             total_elapsed_ms=total_ms,
         )
 
-    # 重试超限：交付违规最少的一轮 + 完整漏洞报告
+    # retries exhausted: deliver the round with the fewest violations + a full report
     best = _best_round(rounds)
     report_lines = [
-        "# Secure-Vibe 漏洞报告（需人工修复）",
-        f"任务: {task_description}",
-        f"语言: {language}" + (f" 框架: {framework}" if framework else ""),
-        f"重试轮数: {retries}/{max_retries}",
+        "# Secure-Vibe vulnerability report (needs human review)",
+        f"Task: {task_description}",
+        f"Language: {language}" + (f"  Framework: {framework}" if framework else ""),
+        f"Retries: {retries}/{max_retries}",
         "",
         best.result.summary(),
         "",
-        "## 交付代码（最佳版本，仍含未修复违规）",
+        "## Delivered code (best version, still contains unfixed violations)",
         f"```{language}",
         best.code,
         "```",

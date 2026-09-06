@@ -1,13 +1,11 @@
-# rules/js.yaml — JavaScript 特有安全规则（正则引擎；浏览器 + Node 通用）
-# html 继承 js 规则（内联 <script> 片段同样被覆盖）。
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+# rules/js.yaml — JavaScript/Node security rules (regex engine; html inherits js)
 
 - id: JS-001
   name: js_eval_new_function
   severity: high
   cwe: CWE-95
-  message: 使用 eval / new Function 动态执行代码（代码注入风险）
-  fix_hint: 禁止 eval/new Function 处理不可信输入；解析数据用 JSON.parse，动态逻辑用对象字面量分发或 Map。
+  message: "Use of eval / new Function to execute code dynamically (code injection risk) | 使用 eval / new Function 动态执行代码（代码注入风险）"
+  fix_hint: "Never eval/new Function on untrusted input; parse data with JSON.parse; dispatch logic via object literals or Map. | 禁止 eval/new Function 处理不可信输入；解析数据用 JSON.parse，动态逻辑用对象字面量分发或 Map。"
   match:
     regex:
       - >-
@@ -16,12 +14,13 @@
         new\s+Function\s*\(
     exclude_regex: []
 
+
 - id: JS-002
   name: js_innerhtml_assignment
   severity: high
   cwe: CWE-79
-  message: 向 innerHTML 赋值非字面量（DOM XSS 风险）
-  fix_hint: 用 textContent 赋值纯文本；必须插入 HTML 时先经 DOMPurify 等库净化，或只拼接受控白名单片段。
+  message: "Assignment of a non-literal value to innerHTML (DOM XSS risk) | 向 innerHTML 赋值非字面量（DOM XSS 风险）"
+  fix_hint: "Use textContent for plain text; when HTML insertion is required, sanitize with DOMPurify or inject only whitelisted fragments. | 用 textContent 赋值纯文本；必须插入 HTML 时先经 DOMPurify 等库净化，或只拼接受控白名单片段。"
   match:
     regex:
       - >-
@@ -30,48 +29,52 @@
       - >-
         DOMPurify|sanitize|purify
 
+
 - id: JS-003
   name: js_document_write
   severity: medium
   cwe: CWE-79
-  message: 使用 document.write 输出（XSS 风险，且阻塞解析）
-  fix_hint: 用 DOM API（createElement/textContent/appendChild）或 textContent 更新内容，避免 document.write。
+  message: "document.write used (XSS risk and parse blocking) | 使用 document.write 输出（XSS 风险，且阻塞解析）"
+  fix_hint: "Use DOM APIs (createElement/textContent/appendChild) or update content via textContent; avoid document.write. | 用 DOM API（createElement/textContent/appendChild）或 textContent 更新内容，避免 document.write。"
   match:
     regex:
       - >-
         document\.write(ln)?\s*\(
     exclude_regex: []
 
+
 - id: JS-004
   name: js_string_timer
   severity: high
   cwe: CWE-95
-  message: setTimeout/setInterval 的参数为字符串（等价 eval，代码注入风险）
-  fix_hint: 传函数引用而非字符串：setTimeout(fn, delay)；禁止 setTimeout("code", ...)。
+  message: "setTimeout/setInterval with a string argument (equivalent to eval) | setTimeout/setInterval 的参数为字符串（等价 eval，代码注入风险）"
+  fix_hint: "Pass a function reference: setTimeout(fn, delay); never setTimeout(\"code\", ...). | 传函数引用而非字符串：setTimeout(fn, delay)；禁止 setTimeout(\"code\", ...)。"
   match:
     regex:
       - >-
         set(Timeout|Interval)\s*\(\s*["'`]
     exclude_regex: []
 
+
 - id: JS-005
   name: js_postmessage_wildcard
   severity: medium
   cwe: CWE-346
-  message: postMessage 使用通配符目标源（跨源消息可发给任意域）
-  fix_hint: targetOrigin 指定明确的源（如 "https://app.example.com"），禁止 "*"；接收端必须校验 event.origin。
+  message: "postMessage with a wildcard target origin (messages can go to any domain) | postMessage 使用通配符目标源（跨源消息可发给任意域）"
+  fix_hint: "Set targetOrigin to an explicit origin (e.g. \"https://app.example.com\"); never \"*\"; the receiver must validate event.origin. | targetOrigin 指定明确的源（如 \"https://app.example.com\"），禁止 \"*\"；接收端必须校验 event.origin。"
   match:
     regex:
       - >-
         postMessage\s*\([^)]*,\s*["']\*["']
     exclude_regex: []
 
+
 - id: JS-006
   name: node_child_process_exec_string
   severity: high
   cwe: CWE-78
-  message: child_process.exec/execSync 以拼接字符串执行命令（命令注入风险）
-  fix_hint: 改用 execFile/spawn 参数列表传参；禁止 exec(`"..." + user`)、exec("sh -c " + user)；用户输入必须转义或白名单。
+  message: "child_process.exec/execSync runs a concatenated command string (command injection risk) | child_process.exec/execSync 以拼接字符串执行命令（命令注入风险）"
+  fix_hint: "Use execFile/spawn with argument lists; never exec(\"...\" + user) or exec(\"sh -c \" + user); escape or whitelist user input. | 改用 execFile/spawn 参数列表传参；禁止 exec(`\"...\" + user`)、exec(\"sh -c \" + user)；用户输入必须转义或白名单。"
   match:
     regex:
       - >-
@@ -79,12 +82,14 @@
       - >-
         (?i)\b(exec|execSync)\s*\([^)]*(req\.(query|body|params)|process\.argv)
     exclude_regex: []
+
+
 - id: JS-007
   name: node_unescaped_output
   severity: high
   cwe: CWE-79
-  message: 把请求参数直接回显（res.send/res.end 反射型 XSS）
-  fix_hint: 回显用户输入前先转义或用模板引擎自动转义；JSON 接口返回 JSON，HTML 接口必须 HTML 转义。
+  message: "Request parameters echoed directly (res.send/res.end reflected XSS) | 把请求参数直接回显（res.send/res.end 反射型 XSS）"
+  fix_hint: "Escape or rely on template auto-escaping before echoing user input; use res.json for data endpoints. | 回显用户输入前先转义或用模板引擎自动转义；JSON 接口返回 JSON，HTML 接口必须 HTML 转义。"
   match:
     regex:
       - >-
@@ -93,12 +98,13 @@
       - >-
         json\.stringify|escapeHtml|sanitize|encodeURI
 
+
 - id: JS-008
   name: js_prototype_pollution
   severity: high
   cwe: CWE-1321
-  message: 把用户 JSON 递归合并进对象（原型污染风险）
-  fix_hint: 深层合并时过滤 __proto__/constructor/prototype 键；用 Object.create(null) 或 whitelist 字段；禁止 Object.assign({}, JSON.parse(userInput))。
+  message: "User JSON recursively merged into objects (prototype pollution risk) | 把用户 JSON 递归合并进对象（原型污染风险）"
+  fix_hint: "Filter __proto__/constructor/prototype keys during deep merges; use Object.create(null) or field whitelists; never Object.assign({}, JSON.parse(userInput)). | 深层合并时过滤 __proto__/constructor/prototype 键；用 Object.create(null) 或 whitelist 字段；禁止 Object.assign({}, JSON.parse(userInput))。"
   match:
     regex:
       - >-
@@ -107,12 +113,13 @@
         (?i)__proto__|\[["']constructor["']\]\s*:
     exclude_regex: []
 
+
 - id: JS-009
   name: node_dynamic_require
   severity: medium
   cwe: CWE-98
-  message: 使用动态表达式 require/import（远程文件加载风险）
-  fix_hint: 禁止 require(用户输入) 或 import(动态拼接)；要动态加载用固定白名单映射到静态模块。
+  message: "Dynamic expression passed to require/import (remote file loading risk) | 使用动态表达式 require/import（远程文件加载风险）"
+  fix_hint: "Never require(user input) or import(dynamic concatenation); map dynamic loads to static modules via a fixed whitelist. | 禁止 require(用户输入) 或 import(动态拼接)；要动态加载用固定白名单映射到静态模块。"
   match:
     regex:
       - >-
@@ -120,3 +127,4 @@
       - >-
         \brequire\s*\(\s*[A-Za-z_$][\w$]*\s*\)
     exclude_regex: []
+

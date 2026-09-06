@@ -1,4 +1,4 @@
-"""tests/test_iac.py — Dockerfile/Kubernetes/Terraform IaC 规则测试."""
+"""tests/test_iac.py — Dockerfile/Kubernetes/Terraform IaC rule tests."""
 import sys
 from pathlib import Path
 
@@ -15,7 +15,7 @@ def ids(result):
     return {x.rule_id for x in result.violations}
 
 
-# --- 语言归一化 ---
+# --- language normalization ---
 
 def test_language_normalization_iac():
     assert normalize_language("docker") == "dockerfile"

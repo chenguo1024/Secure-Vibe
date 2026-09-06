@@ -1,14 +1,11 @@
-# rules/c.yaml — C 语言特有安全规则（正则引擎；AST/污点引擎仅 Python）
-# C++ (cpp) 通过继承链自动加载本文件 + cpp.yaml。
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
-# 注意： (?<![\w.]) 负向断言防止误匹配 fgets/strncpy 等长函数名中的子串。
+# rules/c.yaml — C-specific security rules (regex engine; AST/taint engines are Python-only)
 
 - id: C-001
   name: c_system_command
   severity: high
   cwe: CWE-78
-  message: 使用 system/popen 执行系统命令（命令注入风险）
-  fix_hint: 使用 execve/execlp 固定参数列表（argv 数组）执行外部程序，命令必须为编译期常量；用户输入不得进入命令字符串。
+  message: "system/popen command execution (command injection risk) | 使用 system/popen 执行系统命令（命令注入风险）"
+  fix_hint: "Use execve/execlp with a fixed argv array; the command must be a compile-time constant; user input must never enter the command string. | 使用 execve/execlp 固定参数列表（argv 数组）执行外部程序，命令必须为编译期常量；用户输入不得进入命令字符串。"
   template: safe_c_exec
   match:
     regex:
@@ -22,12 +19,13 @@
       - >-
         execve|execl|execvp
 
+
 - id: C-002
   name: c_sprintf_unbounded
   severity: high
   cwe: CWE-787
-  message: 使用 sprintf 无边界写入缓冲区（缓冲区溢出风险）
-  fix_hint: 使用 snprintf(buf, sizeof(buf), ...) 限界写入；动态长度用 strlen 预检查后拼接或 std::string（C++）。
+  message: "sprintf unbounded write into buffer (buffer overflow) | 使用 sprintf 无边界写入缓冲区（缓冲区溢出风险）"
+  fix_hint: "Use snprintf(buf, sizeof(buf), ...); when lengths are dynamic, pre-check with strlen or use std::string (C++). | 使用 snprintf(buf, sizeof(buf), ...) 限界写入；动态长度用 strlen 预检查后拼接或 std::string（C++）。"
   template: safe_c_snprintf
   match:
     regex:
@@ -37,12 +35,13 @@
         ::\s*sprintf\s*\(
     exclude_regex: []
 
+
 - id: C-003
   name: c_unsafe_strcopy
   severity: high
   cwe: CWE-787
-  message: 使用 strcpy/strcat 无边界字符串操作（缓冲区溢出风险）
-  fix_hint: 使用 strncpy/strncat 并显式保证 NUL 结尾，或 snprintf 拼接；确保目标缓冲区容纳 strlen(src)+1。
+  message: "strcpy/strcat unbounded string operations (buffer overflow) | 使用 strcpy/strcat 无边界字符串操作（缓冲区溢出风险）"
+  fix_hint: "Use strncpy/strncat with explicit NUL termination or snprintf; ensure the destination can hold strlen(src)+1. | 使用 strncpy/strncat 并显式保证 NUL 结尾，或 snprintf 拼接；确保目标缓冲区容纳 strlen(src)+1。"
   template: safe_c_snprintf
   match:
     regex:
@@ -58,12 +57,13 @@
       - >-
         strncpy|strncat
 
+
 - id: C-004
   name: c_insecure_rand
   severity: medium
   cwe: CWE-338
-  message: 使用 rand() 生成安全相关值（可预测随机数）
-  fix_hint: 安全用途（token、会话 ID、密钥）必须使用 /dev/urandom 读取、getrandom()（Linux）、或 C++ std::random_device + 密码学库；rand() 仅可用于游戏等非安全场景。
+  message: "rand() used for security-sensitive values (predictable randomness) | 使用 rand() 生成安全相关值（可预测随机数）"
+  fix_hint: "For security uses (tokens, session IDs, keys) read /dev/urandom or getrandom() (Linux), or std::random_device + a crypto library in C++; rand() only for non-security purposes. | 安全用途（token、会话 ID、密钥）必须使用 /dev/urandom 读取、getrandom()（Linux）、或 C++ std::random_device + 密码学库；rand() 仅可用于游戏等非安全场景。"
   match:
     regex:
       - >-
@@ -72,12 +72,13 @@
         \bstd::rand\s*\(
     exclude_regex: []
 
+
 - id: C-005
   name: c_nonconstant_format_string
   severity: high
   cwe: CWE-134
-  message: 格式化函数的 format 参数非常量（格式化字符串漏洞）
-  fix_hint: printf/fprintf/syslog 的 format 参数必须为字符串字面量：printf("%s", user_input)，绝不能 printf(user_input)。
+  message: "Non-constant format argument in printf family (format string vulnerability) | 格式化函数的 format 参数非常量（格式化字符串漏洞）"
+  fix_hint: "printf/fprintf/syslog format must be a string literal: printf(\"%s\", user_input); never printf(user_input). | printf/fprintf/syslog 的 format 参数必须为字符串字面量：printf(\"%s\", user_input)，绝不能 printf(user_input)。"
   match:
     regex:
       - >-
@@ -88,12 +89,13 @@
         \bsyslog\s*\(\s*[A-Za-z0-9_]+\s*,\s*[A-Za-z_][\w\[\]>.]*\s*[,)]
     exclude_regex: []
 
+
 - id: C-006
   name: c_scanf_unbounded
   severity: medium
   cwe: CWE-787
-  message: scanf 系列使用 %s 无宽度限制（缓冲区溢出风险）
-  fix_hint: 使用 %63s 等宽度限定（缓冲区大小-1），或改用 fgets(buf, sizeof(buf), stdin)；绝不用裸 %s。
+  message: "scanf family uses %s without a width limit (buffer overflow) | scanf 系列使用 %s 无宽度限制（缓冲区溢出风险）"
+  fix_hint: "Use a width like %63s (buffer size - 1) or fgets(buf, sizeof(buf), stdin); never a bare %s. | 使用 %63s 等宽度限定（缓冲区大小-1），或改用 fgets(buf, sizeof(buf), stdin)；绝不用裸 %s。"
   match:
     regex:
       - >-
@@ -102,14 +104,16 @@
       - >-
         %\d+s
 
+
 - id: C-007
   name: c_insecure_tempfile
   severity: medium
   cwe: CWE-377
-  message: 使用不安全的临时文件函数（可预测路径/竞争风险）
-  fix_hint: 使用 mkstemp()/mkdtemp()（配合 umask 控制）创建临时文件；tmpnam/mktemp 生成的名字可预测，禁止使用。
+  message: "Insecure temporary file functions (predictable paths / race conditions) | 使用不安全的临时文件函数（可预测路径/竞争风险）"
+  fix_hint: "Use mkstemp()/mkdtemp() (with proper umask); tmpnam/mktemp produce predictable names and are banned. | 使用 mkstemp()/mkdtemp()（配合 umask 控制）创建临时文件；tmpnam/mktemp 生成的名字可预测，禁止使用。"
   match:
     regex:
       - >-
         \b(tmpnam|mktemp)\s*\(
     exclude_regex: []
+

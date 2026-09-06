@@ -1,106 +1,109 @@
-# Secure-Vibe 专业级评测指南
+# Secure-Vibe Professional Evaluation Guide
 
-本项目内置两级评测：**离线基线**（立即可跑）+ **论文级基准**（需数据集）。
+This project includes two levels of evaluation: **offline baseline** (runnable immediately) + **paper-grade benchmark** (requires a dataset).
 
-## 离线基线（内置，开箱即用）
+## Offline Baseline (built-in, ready to use)
 
 ```bash
-# 本地基准：用内置恶意/安全用例集，计算检出率/误报率/耗时
+# Local benchmark: use the built-in malicious/safe test case set to compute detection rate / false positive rate / latency
 python tools/benchmark.py
-python tools/run_evaluation.py --local   # 等价，输出 evaluation_report.json
+python tools/run_evaluation.py --local   # equivalent; outputs evaluation_report.json
 
-# 当前基线（29 恶意 + 22 安全用例）:
+# Current baseline (29 malicious + 22 safe cases):
 #   detection_rate = 1.0, false_positive_rate = 0.0, avg_latency_ms ≈ 0.16
 ```
 
-## 基础评测（内置，开箱即用）
+## Basic Evaluation (built-in, ready to use)
 
-- `tests/test_validator.py`：三引擎（AST+正则+污点）逐规则用例
-- `tests/test_repair_loop.py`：修复循环收敛、日志完整性、Mock 端到端
-- 自检：`python cli.py selftest`
+- `tests/test_validator.py`: per-rule test cases across the three engines (AST + regex + taint)
+- `tests/test_repair_loop.py`: repair loop convergence, log completeness, Mock end-to-end
+- Self-test: `python cli.py selftest`
 
-## 专业级评测（SecurityEval，需下载数据集）
+## Professional Evaluation (SecurityEval, requires downloading the dataset)
 
-[SecurityEval](https://github.com/s2labres/security-eval)（S2Lab）是安全代码生成领域的标准评测集，
-含 CWE 标注的恶意代码生成样本。用于测量本 Skill 校验器的检出率/误报率，可与论文对比。
+[SecurityEval](https://github.com/s2labres/security-eval) (S2Lab) is the standard evaluation set for secure code
+generation, containing malicious code generation samples annotated with CWEs. It is used to measure the validator's
+detection rate / false positive rate for this Skill, and to compare against published papers.
 
-### 步骤
+### Steps
 
 ```bash
-# 一键获取所有外部数据集（需要网络时运行）
+# One-shot download of all external datasets (run when network access is available)
 python tools/fetch_datasets.py --all --dir D:/datasets
-# 或单独获取 SecurityEval
+# Or fetch SecurityEval alone
 python tools/fetch_datasets.py --securityeval --dir D:/datasets
 
-# 配置 config.yaml
+# Configure config.yaml
 evaluation:
   enabled: true
   securityeval_path: "D:/datasets/SecurityEval"
 
-# 运行评测
+# Run evaluation
 python tools/run_evaluation.py
 ```
 
-### 通用标注语料（无 SecurityEval 时也可跑）
+### Generic Annotated Corpora (can run even without SecurityEval)
 
-`run_evaluation.py --corpus` 接受任意 JSONL（每行 `{code, insecure, cwe}`）或源码目录：
+`run_evaluation.py --corpus` accepts any JSONL (each line `{code, insecure, cwe}`) or a source directory:
 
 ```bash
-python tools/run_evaluation.py --corpus tests/sample_corpus.jsonl   # 内置示例
-python tools/run_evaluation.py --corpus D:/datasets/your_data.jsonl # 任意标注数据
+python tools/run_evaluation.py --corpus tests/sample_corpus.jsonl   # built-in sample
+python tools/run_evaluation.py --corpus D:/datasets/your_data.jsonl # any annotated data
 ```
 
-指标口径与 SecurityEval 一致（detection_rate / false_positive_rate / avg_latency_ms / missed_by_cwe）。
+Metric definitions are consistent with SecurityEval (detection_rate / false_positive_rate / avg_latency_ms / missed_by_cwe).
 
-### 指标说明
+### Metric Description
 
-| 指标 | 含义 | 目标 |
+| Metric | Meaning | Target |
 |------|------|------|
-| `detection_rate` | 恶意样本检出率 | 越高越好（基线参考 >0.7） |
-| `false_positive_rate` | 安全样本误报率 | 越低越好（<0.05） |
-| `repair_success_rate` | 修复循环 3 轮内收敛率 | 越高越好 |
-| `avg_repair_rounds` | 平均修复轮数 | 越低越好 |
-| `avg_latency_ms` | 平均校验耗时 | <50ms |
+| `detection_rate` | Detection rate on malicious samples | Higher is better (baseline reference >0.7) |
+| `false_positive_rate` | False positive rate on safe samples | Lower is better (<0.05) |
+| `repair_success_rate` | Convergence rate of the repair loop within 3 rounds | Higher is better |
+| `avg_repair_rounds` | Average number of repair rounds | Lower is better |
+| `avg_latency_ms` | Average validation latency | <50ms |
 
-### 漏检分析
+### Missed Detection Analysis
 
-评测报告 `missed_by_cwe` 字段按 CWE 统计漏检——这是**规则迭代的直接依据**：
-对漏检最多的 CWE，在 `rules/*.yaml` 中补充对应模式（可用 `tools/mine_cwe_rules.py`
-从 GHSA-CySec 数据集挖掘修复措施），然后重跑评测验证提升。
+The `missed_by_cwe` field in the evaluation report tallies missed detections by CWE — this is the **direct basis for
+rule iteration**: for the CWEs with the most missed detections, add matching patterns to `rules/*.yaml` (you can use
+`tools/mine_cwe_rules.py` to mine fixes from the GHSA-CySec dataset), then rerun the evaluation to verify improvement.
 
-### 与 GHSA-CySec 联动（规则扩充闭环）
+### Integration with GHSA-CySec (rule expansion loop)
 
 ```bash
-# 1. ModelScope 申请并下载 GHSA-CySec（国内可达）
+# 1. Apply for and download GHSA-CySec from ModelScope (reachable within China)
 modelscope download --dataset couvor/GHSA-CySec --local_dir D:\datasets\GHSA-CySec
 
-# 2. 挖掘 CWE→修复措施 → 自动补充 rules/cwe_reference.yaml
+# 2. Mine CWE → fixes → automatically append rules/cwe_reference.yaml
 python tools/mine_cwe_rules.py D:\datasets\GHSA-CySec
 
-# 3. 依据新知识补充 rules/*.yaml 检测模式 → 重跑评测
+# 3. Add detection patterns to rules/*.yaml based on the new knowledge → rerun evaluation
 ```
 
-## 本地日志挖掘（离线，闭环已可用）
+## Local Log Mining (offline, the loop is fully available)
 
-无需外部数据集，从运行时漏检记录直接挖规则候选（人工审核后升级为正式规则）：
+No external dataset needed: mine rule candidates directly from runtime missed-detection records (promoted to official
+rules after human review):
 
 ```bash
-# 上报漏检（Agent 发现校验器没检出的模式时）
-python cli.py missed --pattern 'getattr(builtins, "eval")(x)' --note "动态访问内建绕过"
+# Report a missed pattern (when the Agent finds a pattern the validator did not catch)
+python cli.py missed --pattern 'getattr(builtins, "eval")(x)' --note "dynamic builtins access bypass"
 
-# 挖掘漏检模式 → 生成审核清单 logs/pending_rules.json
+# Mine missed patterns → generate review checklist logs/pending_rules.json
 python tools/mine_cwe_rules.py --from-logs
 ```
 
-> 已实证：日志挖掘发现的 `getattr(builtins, "eval")` 绕过已升级为 BL-005 规则并加入回归测试——
-> 这就是"打赏闭环"（发现攻击 → 记录 → 自动找解 → 更新规则）的最小可用路径。
+> Proven in practice: the `getattr(builtins, "eval")` bypass discovered via log mining has been promoted to rule BL-005
+> and added to regression tests — this is the minimum viable path of the "reward loop" (find attack → record →
+> automatically find a fix → update rules).
 
-## 迭代闭环全景
+## Full Picture of the Iteration Loop
 
 ```
-评测漏检（missed_by_cwe）──┐
-人工修改 diff（日志）──────┼─► 人工审核 ─► rules/*.yaml 新规则 ─► 重跑评测验证
-Agent 漏检上报（missed）──┘         （防投毒闸口）        │
-        ▲                                              │
-        └──────────────── 持续循环 ◄───────────────────┘
+missed detections in evaluation (missed_by_cwe) ──┐
+manual modification diff (logs) ──────────────────┼─► human review ─► new rules/*.yaml rules ─► rerun evaluation to verify
+Agent missed-pattern reports (missed) ────────────┘          (anti-poisoning gate)        │
+        ▲                                                                                 │
+        └────────────────── continuous loop ◄─────────────────────────────────────────────┘
 ```

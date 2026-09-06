@@ -1,12 +1,11 @@
-# rules/java.yaml — Java/Kotlin (Spring) 特有安全规则（正则引擎）
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+# rules/java.yaml — Java/Kotlin (Spring) security rules (regex engine)
 
 - id: JAVA-001
   name: java_os_command_injection
   severity: high
   cwe: CWE-78
-  message: Runtime.exec/ProcessBuilder 拼接用户输入（命令注入风险）
-  fix_hint: 用 ProcessBuilder(argsList) 参数列表直传，绝不把用户输入拼进命令字符串；用户输入先白名单校验。
+  message: "Runtime.exec/ProcessBuilder with concatenated user input (command injection risk) | Runtime.exec/ProcessBuilder 拼接用户输入（命令注入风险）"
+  fix_hint: "Use ProcessBuilder(argsList) with an explicit argument list; whitelist user input; never concatenate command strings. | 用 ProcessBuilder(argsList) 参数列表直传，绝不把用户输入拼进命令字符串；用户输入先白名单校验。"
   match:
     regex:
       - >-
@@ -17,12 +16,13 @@
       - >-
         ProcessBuilder\s*\(\s*(new\s+String\[\]|List\.of)
 
+
 - id: JAVA-002
   name: java_jdbc_sql_concat
   severity: high
   cwe: CWE-89
-  message: JDBC Statement 拼接 SQL（SQL 注入风险）
-  fix_hint: 使用 PreparedStatement 占位符 "?"（setString/setInt 传参）；禁止把用户输入拼接进 Statement.executeQuery。
+  message: "JDBC Statement with concatenated SQL (SQL injection risk) | JDBC Statement 拼接 SQL（SQL 注入风险）"
+  fix_hint: "Use PreparedStatement placeholders (setString/setInt); never concatenate user input into Statement.executeQuery. | 使用 PreparedStatement 占位符 \"?\"（setString/setInt 传参）；禁止把用户输入拼接进 Statement.executeQuery。"
   match:
     regex:
       - >-
@@ -33,12 +33,13 @@
       - >-
         PreparedStatement|prepareStatement
 
+
 - id: JAVA-003
   name: java_deserialization
   severity: high
   cwe: CWE-502
-  message: 使用 Java 原生反序列化（ObjectInputStream.readObject，RCE 风险）
-  fix_hint: 禁止反序列化不可信数据；用 JSON（Gson/Jackson）等安全格式；必须序列化时用 SerializationFilter 严格白名单。
+  message: "Java native deserialization used (ObjectInputStream.readObject - RCE risk) | 使用 Java 原生反序列化（ObjectInputStream.readObject，RCE 风险）"
+  fix_hint: "Never deserialize untrusted data; use JSON (Gson/Jackson) instead. If serialization is required, apply a strict SerializationFilter whitelist. | 禁止反序列化不可信数据；用 JSON（Gson/Jackson）等安全格式；必须序列化时用 SerializationFilter 严格白名单。"
   match:
     regex:
       - >-
@@ -47,12 +48,13 @@
       - >-
         ObjectInputFilter
 
+
 - id: JAVA-004
   name: java_xxe_parser
   severity: high
   cwe: CWE-611
-  message: XML 解析器未禁用外部实体（XXE 风险）
-  fix_hint: DocumentBuilderFactory 设 FEATURE_SECURE_PROCESSING + 禁用 DOCTYPE/外部实体；或使用 SAXParserFactory 同样的安全配置。
+  message: "XML parser does not disable external entities (XXE risk) | XML 解析器未禁用外部实体（XXE 风险）"
+  fix_hint: "Set FEATURE_SECURE_PROCESSING and disable DOCTYPE/external entities on DocumentBuilderFactory/SAXParserFactory/XMLInputFactory. | DocumentBuilderFactory 设 FEATURE_SECURE_PROCESSING + 禁用 DOCTYPE/外部实体；或使用 SAXParserFactory 同样的安全配置。"
   match:
     regex:
       - >-
@@ -61,12 +63,13 @@
       - >-
         FEATURE_SECURE_PROCESSING|disallow-doctype|setFeature
 
+
 - id: JAVA-005
   name: java_insecure_random
   severity: medium
   cwe: CWE-338
-  message: 使用 java.util.Random/Math.random 生成安全相关值（可预测随机数）
-  fix_hint: 安全用途（token、会话 ID）用 java.security.SecureRandom；Random/Math.random 仅用于模拟等非安全场景。
+  message: "java.util.Random / Math.random used for security-sensitive values (predictable randomness) | 使用 java.util.Random/Math.random 生成安全相关值（可预测随机数）"
+  fix_hint: "Use java.security.SecureRandom for tokens and session IDs; Random/Math.random only for simulations. | 安全用途（token、会话 ID）用 java.security.SecureRandom；Random/Math.random 仅用于模拟等非安全场景。"
   match:
     regex:
       - >-
@@ -77,26 +80,29 @@
       - >-
         SecureRandom
 
+
 - id: JAVA-006
   name: java_spring_actuator_exposure
   severity: medium
   cwe: CWE-200
-  message: Spring Boot Actuator 暴露敏感端点（信息泄露）
-  fix_hint: 限制 management.endpoints.web.exposure.include 为 health,info；env/beans/heapdump/threaddump 等敏感端点禁止对公网开放。
+  message: "Spring Boot Actuator exposes sensitive endpoints (information disclosure) | Spring Boot Actuator 暴露敏感端点（信息泄露）"
+  fix_hint: "Restrict management.endpoints.web.exposure.include to health,info; never expose env/beans/heapdump/threaddump publicly. | 限制 management.endpoints.web.exposure.include 为 health,info；env/beans/heapdump/threaddump 等敏感端点禁止对公网开放。"
   match:
     regex:
       - >-
         (?i)management\.endpoints\.web\.exposure\.include\s*=\s*\*|env|beans|heapdump|threaddump
     exclude_regex: []
 
+
 - id: JAVA-007
   name: java_ecb_cipher
   severity: medium
   cwe: CWE-327
-  message: 使用 ECB 分组模式（密文模式泄露风险）
-  fix_hint: 改用 GCM/CTR/CBC 等语义安全模式；密码存储用 PBKDF2/bcrypt，不用可逆加密。
+  message: "ECB block cipher mode used (ciphertext pattern leakage) | 使用 ECB 分组模式（密文模式泄露风险）"
+  fix_hint: "Use semantically secure modes (GCM/CTR/CBC); store passwords with PBKDF2/bcrypt instead of reversible ciphers. | 改用 GCM/CTR/CBC 等语义安全模式；密码存储用 PBKDF2/bcrypt，不用可逆加密。"
   match:
     regex:
       - >-
         (?i)"AES/ECB/|AES"/[^"]*ECB
     exclude_regex: []
+

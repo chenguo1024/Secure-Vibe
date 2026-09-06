@@ -1,18 +1,19 @@
-"""ast_fixer.py — AST 确定性修复引擎（零 LLM、毫秒级、安全等价改写）.
+"""ast_fixer.py — AST deterministic fix engine (zero LLM, millisecond-scale, safe equivalent rewrites).
 
-原理:
-  - 解析代码为 AST，用 ast.NodeTransformer 做节点级改写
-  - 改写后 ast.unparse 还原源码，再交给校验器复验
-  - 只处理"可证明安全等价"的改写；无法确定性修复的违规（如 eval、
-    shell=True 字符串命令拆分、pickle 反序列化）保留原样交给 LLM/人工
+How it works:
+  - parse code into an AST and rewrite at node level with ast.NodeTransformer
+  - ast.unparse the result back to source, then re-validate
+  - only "provably safe-equivalent" rewrites are applied; violations without a
+    deterministic fix (eval, shell=True string-command splits, pickle) are left
+    as-is for the LLM or a human
 
-覆盖的确定性修复（rule_name -> 改写）:
+Deterministic fixes covered (rule_name -> rewrite):
   insecure_random          random.randint/randrange/choice/getrandbits -> secrets.*
   weak_hash                hashlib.md5/sha1 -> hashlib.sha256
-  unsafe_yaml_load         yaml.load -> yaml.safe_load（并丢弃 Loader= 参数）
-  hardcoded_secret         简单赋值 STR = "明文" -> STR = os.environ.get("STR", "")
+  unsafe_yaml_load         yaml.load -> yaml.safe_load (Loader= args dropped)
+  hardcoded_secret         simple assignment STR = "plain" -> STR = os.environ.get("STR", "")
 
-用法:
+Usage:
     from core.ast_fixer import deterministic_fix
     new_code, applied_rules = deterministic_fix(code, [violation, ...])
 """
@@ -29,16 +30,16 @@ WEAK_HASH_FIXES = {"md5": "sha256", "sha1": "sha256"}
 
 
 class _SecureTransformer(ast.NodeTransformer):
-    """按规则集合对 AST 做安全等价改写。"""
+    """Apply safe equivalent rewrites to the AST for a set of rules."""
 
     def __init__(self, rules: set[str]):
         self.rules = rules
         self.applied: set[str] = set()
         self.need_imports: set[str] = set()
-        # 已存在的导入（避免重复插入）
+        # imports already present (avoids duplication)
         self.have_imports: set[str] = set()
 
-    # -- 导入收集 -----------------------------------------------------------
+    # -- import scanning -------------------------------------------------------
 
     def _scan_imports(self, tree: ast.AST) -> None:
         for node in ast.walk(tree):
@@ -47,13 +48,13 @@ class _SecureTransformer(ast.NodeTransformer):
             elif isinstance(node, ast.ImportFrom):
                 self.have_imports.add(node.module.split(".")[0] if node.module else "")
 
-    # -- 危险调用改写 -------------------------------------------------------
+    # -- dangerous-call rewrites -----------------------------------------------
 
     def visit_Call(self, node: ast.Call) -> ast.AST:
-        # 先递归处理子节点
+        # recurse into children first
         self.generic_visit(node)
 
-        # 1) 不安全随机 -> secrets（可证明等价：均为生成随机值，secrets 更安全）
+        # 1) insecure random -> secrets (provably equivalent: both generate random values; secrets is safer)
         if "insecure_random" in self.rules and isinstance(node.func, ast.Attribute):
             f = node.func
             if isinstance(f.value, ast.Name) and f.value.id == "random" and f.attr in RANDOM_FIXES:
@@ -63,7 +64,7 @@ class _SecureTransformer(ast.NodeTransformer):
                     self.need_imports.add("secrets")
                     return ast.copy_location(new, node)
 
-        # 2) 弱哈希 -> sha256（升级为强哈希；安全用途方向正确）
+        # 2) weak hash -> sha256 (upgrade to a strong hash; the right direction for security uses)
         if "weak_hash" in self.rules:
             func = node.func
             if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "hashlib":
@@ -71,19 +72,19 @@ class _SecureTransformer(ast.NodeTransformer):
                     func.attr = WEAK_HASH_FIXES[func.attr]
                     self.applied.add("weak_hash")
 
-        # 3) yaml.load -> yaml.safe_load（不带 Loader 时安全等价）
+        # 3) yaml.load -> yaml.safe_load (safe equivalent without Loader)
         if "unsafe_yaml_load" in self.rules and isinstance(node.func, ast.Attribute):
             func = node.func
             if isinstance(func.value, ast.Name) and func.value.id == "yaml" and func.attr == "load":
                 func.attr = "safe_load"
-                # safe_load 不接收 Loader 参数，丢弃之
+                # safe_load takes no Loader argument - drop it
                 node.keywords = [k for k in node.keywords if k.arg and k.arg.lower() != "loader"]
                 self.applied.add("unsafe_yaml_load")
 
         return node
 
     def _fix_random(self, node: ast.Call, attr: str) -> Optional[ast.AST]:
-        """构造 secrets 等价调用。"""
+        """Construct the equivalent secrets call."""
         secrets = lambda name: ast.Attribute(ast.Name("secrets", ast.Load()), name, ast.Load())  # noqa: E731
 
         if attr == "choice":
@@ -94,14 +95,14 @@ class _SecureTransformer(ast.NodeTransformer):
             if len(node.args) == 1:
                 return ast.Call(secrets("randbits"), node.args, [])
             return None
-        if attr == "random":  # [0,1) 浮点，丢熵不关键时给 0.0，但这不是等价——交由 LLM
+        if attr == "random":  # [0,1) float; not equivalent when replaced - leave to the LLM
             return None
         if attr == "uniform":
             return None
         if attr == "sample":
             return None
         # randint(a, b) -> secrets.randbelow(b - a + 1) + a
-        # randrange(a[, b]) -> secrets.randbelow(b - a) + a  或 randbelow(a)
+        # randrange(a[, b]) -> secrets.randbelow(b - a) + a   or randbelow(a)
         if attr in ("randint", "randrange"):
             if attr == "randint" and len(node.args) == 2:
                 a, b = node.args
@@ -120,13 +121,13 @@ class _SecureTransformer(ast.NodeTransformer):
             )
         return None
 
-    # -- 硬编码密钥 -> 环境变量 -------------------------------------------------
+    # -- hardcoded secret -> environment variable -------------------------------
 
     def visit_Assign(self, node: ast.Assign) -> ast.AST:
         self.generic_visit(node)
         if "hardcoded_secret" not in self.rules:
             return node
-        # 仅处理单一 Name 目标 + 字符串常量值
+        # only single Name targets with a string constant value
         if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
             return node
         if not isinstance(node.value, ast.Constant) or not isinstance(node.value.value, str):
@@ -134,7 +135,7 @@ class _SecureTransformer(ast.NodeTransformer):
         var = node.targets[0].id
         if len(node.value.value) < 6:
             return node
-        # "明文" -> os.environ.get("VAR", "")
+        # "plain" -> os.environ.get("VAR", "")
         node.value = ast.Call(
             func=ast.Attribute(
                 value=ast.Attribute(
@@ -154,12 +155,12 @@ class _SecureTransformer(ast.NodeTransformer):
 
 
 def _insert_imports(code: str, transformer: _SecureTransformer) -> str:
-    """在模块头部（docstring 之后）插入缺少的 import。"""
+    """Insert missing imports at the module head (after the docstring)."""
     missing = transformer.need_imports - transformer.have_imports
     if not missing:
         return code
 
-    # 用 AST 定位 docstring 结束行（单行/多行都正确）
+    # locate the docstring end line via AST (correct for single and multi-line)
     insert_at = 0
     try:
         tree = ast.parse(code)
@@ -177,10 +178,10 @@ def _insert_imports(code: str, transformer: _SecureTransformer) -> str:
 
 
 def deterministic_fix(code: str, violations: list[Any]) -> tuple[str, list[str]]:
-    """对可确定性修复的违规做 AST 改写。
+    """Apply AST rewrites for deterministically fixable violations.
 
-    返回 (新代码, 已应用的 rule_name 列表)。
-    代码解析失败或无可修复规则时返回原代码 + 空列表。
+    Returns (new code, list of applied rule_names).
+    Returns the original code + an empty list when parsing fails or no rule is fixable.
     """
     from core.validator import Violation
 

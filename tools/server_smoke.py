@@ -1,4 +1,4 @@
-"""server.py 启动冒烟测试（README 未要求，但验证 HTTP 服务可用）。"""
+"""server.py startup smoke test (not required by the README, but verifies the HTTP service works)."""
 import json
 import subprocess
 import sys
@@ -34,13 +34,13 @@ def main() -> int:
     )
     try:
         if not _wait_ready(f"{base}/health"):
-            print("SMOKE FAIL: health 不可达")
+            print("SMOKE FAIL: /health unreachable")
             return 1
         with urllib.request.urlopen(f"{base}/health", timeout=5) as r:
             health = json.loads(r.read().decode("utf-8"))
         assert health["status"] == "ok", health
 
-        # 校验恶意代码：应返回 passed=False
+        # validate malicious code: should return passed=False
         body = json.dumps({"code": "eval(user_input)", "language": "python"}).encode("utf-8")
         req = urllib.request.Request(f"{base}/validate", data=body,
                                      headers={"Content-Type": "application/json"})
@@ -49,7 +49,7 @@ def main() -> int:
         assert resp["passed"] is False, resp
         assert any(v["rule_id"] == "PY-001" for v in resp["violations"])
 
-        print("SMOKE OK: /health + /validate 均正常，教学路径可用")
+        print("SMOKE OK: /health + /validate both healthy; teaching paths usable")
         return 0
     finally:
         proc.terminate()

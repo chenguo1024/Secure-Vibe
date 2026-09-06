@@ -1,346 +1,283 @@
-# Secure-Vibe — 生成时安全的代码生成 Skill
+# Secure-Vibe — Secure-by-Generation Coding Skill
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Languages](https://img.shields.io/badge/Languages-13-green)
 ![Rules](https://img.shields.io/badge/Rules-110-orange)
 ![Tests](https://img.shields.io/badge/Tests-225-brightgreen)
 
-在 vibe-coding（AI 自由生成代码）场景中，**在代码生成过程中就引导模型写出安全代码**——
-不是"先生成后检查"，而是：安全上下文注入 → 生成 → 毫秒级校验 → 自动修复循环。
+In vibe-coding (AI freely generates code) scenarios, **guide the model to write secure code during generation itself** — not "generate first, check later", but: security context injection → generation → millisecond validation → automatic repair loop.
 
-## 两种使用模式
+## Two usage modes
 
-### 跨 Agent 安装（opencode / Codex / Claude Code）
+### Cross-agent installation (opencode / Codex / Claude Code)
 
-本 Skill 使用各主流 Agent 通用的 SKILL.md 格式（frontmatter: `name` + `description`），
-校验器 `cli.py` 相对自身定位规则/模板、**不依赖工作目录**，任何能执行 shell 的 Agent 均可调用：
+This skill uses the SKILL.md format shared by mainstream agents (frontmatter: `name` + `description`).
+The validator `cli.py` resolves rules/templates relative to itself and **does not depend on the working
+directory** — any agent that can run a shell can invoke it:
 
-| Agent | 默认技能目录 | 安装命令 |
-|-------|-------------|----------|
-| opencode | `~/.config/opencode/skill/secure-vibe` | `./install.sh` 或 `powershell -File install.ps1` |
-| Codex | `~/.codex/skills/secure-vibe` | `./install.sh codex` 或 `powershell -File install.ps1 -Agent codex` |
-| Claude Code | `~/.claude/skills/secure-vibe` | `./install.sh claude` 或 `powershell -File install.ps1 -Agent claude` |
-| 其他/自定义 | 任意 | `./install.sh /path/to/skills/secure-vibe` 或 `-Target "C:\..."` |
+| Agent | Default skill directory | Install command |
+|-------|-------------------------|-----------------|
+| opencode | `~/.config/opencode/skill/secure-vibe` | `./install.sh` or `powershell -File install.ps1` |
+| Codex | `~/.codex/skills/secure-vibe` | `./install.sh codex` or `powershell -File install.ps1 -Agent codex` |
+| Claude Code | `~/.claude/skills/secure-vibe` | `./install.sh claude` or `powershell -File install.ps1 -Agent claude` |
+| Other/custom | anywhere | `./install.sh /path/to/skills/secure-vibe` or `-Target "C:\..."` |
 
-- 运行依赖：任意 Python 3.7+（Linux/macOS 用 `python3`）+ `pyyaml`（`pip install pyyaml`，见 `requirements.txt`）。安装脚本自动探测带 pyyaml 的解释器并跑 `selftest` 自检。
-- `context` / `validate` / `log` / `selftest` 均为本地毫秒级执行，**零网络、零 API Key**。
+- Runtime requirement: any Python 3.7+ (use `python3` on Linux/macOS) + `pyyaml` (`pip install pyyaml`, see `requirements.txt`). The install script auto-detects an interpreter with pyyaml and runs `selftest`.
+- `context` / `validate` / `log` / `selftest` run locally at millisecond scale — **zero network, zero API key**.
 
-### 模式 A：安装进 Agent（推荐，Skill 的主形态）
+### Mode A: install into an agent (recommended, the skill's primary form)
 
-把本 Skill 安装到 Agent（opencode / Codex / Claude Code / 任意支持技能目录的框架），
-生成由 **Agent 自身的 LLM** 完成（session 模式），本 Skill 提供
-上下文构建 / 毫秒级校验 / 修复指令 / 日志 四个确定性工具，**零 API 依赖、零密钥**。
+Install this skill into an agent (opencode / Codex / Claude Code / any framework with skill directories).
+Generation is performed by the agent's own LLM (session mode); this skill supplies four deterministic tools
+— context building / millisecond validation / repair instructions / logging — **zero API dependency, zero secrets**.
 
 ```bash
-# Windows（默认安装到 opencode 技能目录）
+# Windows (default: opencode skill directory)
 powershell -File install.ps1
 # Codex / Claude Code
 powershell -File install.ps1 -Agent codex
 powershell -File install.ps1 -Agent claude
 
 # Linux / macOS
-./install.sh                 # 默认 opencode
+./install.sh                 # default: opencode
 ./install.sh codex           # Codex
 ./install.sh claude          # Claude Code
 ```
 
-安装脚本自动复制技能文件并运行自检（`cli.py selftest`）。重启 Agent 后，
-Agent 在写代码前会执行：
+The install script copies the skill files and runs a self-test (`cli.py selftest`). After restarting the agent, it runs before writing code:
 
 ```
-① cli.py context --task "..."      # 加载安全规则（写代码之前）
-② （Agent 自身 LLM 生成代码）
-③ cli.py validate --file f.py      # 毫秒级校验（exit 1 = 有违规 + fix_hint）
-④ 按 fix_hint 修复，重试 ≤3 次；仍失败标记[需人工修复]
-⑤ cli.py log --task "..." --file f.py --verdict passed   # 记录
+step 1   cli.py context --task "..."      # load the security rules (before writing code)
+step 2   (the agent's own LLM generates the code)
+step 3   cli.py validate --file f.py      # millisecond validation (exit 1 = violations + fix_hint)
+step 4   fix per fix_hint, retry <= 3 rounds; on repeated failure mark [needs human review]
+step 5   cli.py log --task "..." --file f.py --verdict passed   # record
 ```
 
-## 版本化与自动更新（已安装用户如何拿到新版本）
+## Versioning and automatic updates (how installed users get new versions)
 
-三种更新路径，按发布方式选择：
+Three update paths, pick by release style:
 
-### 路径 1：git 管理安装（推荐，一键更新）
+### Path 1: git-managed install (recommended, one-click updates)
 
 ```bash
-# 安装时用 -Repo / 第二参数，目标目录由 git 管理
-powershell -File install.ps1 -Target ~/.config/opencode/skill/secure-vibe -Repo https://github.com/yourname/secure-vibe.git
-./install.sh ~/.config/opencode/skill/secure-vibe https://github.com/yourname/secure-vibe.git
+# install with -Repo / the second argument; the target directory is managed by git
+powershell -File install.ps1 -Target ~/.config/opencode/skill/secure-vibe -Repo https://github.com/chenguo1024/Secure-Vibe.git
+./install.sh ~/.config/opencode/skill/secure-vibe https://github.com/chenguo1024/Secure-Vibe.git
 
-# 你发布新版本后，用户一键更新（等价于 git pull --ff-only + 自检）
+# after you publish a new version, users update with one click (equivalent to git pull --ff-only + self-test)
 python ~/.config/opencode/skill/secure-vibe/cli.py update
 
-# 查询当前版本 / 对比远端最新版
-python cli.py version
-python cli.py version --check https://github.com/yourname/secure-vibe
+# show the current version / compare against the remote latest version
+python cli.py version --check https://github.com/chenguo1024/Secure-Vibe
 ```
 
-### 路径 2：重跑安装脚本（幂等，覆盖即更新）
-
-`install.ps1` / `install.sh` 本身是幂等的——重跑即把新版文件覆盖到已安装目录：
-
-```bash
-powershell -File install.ps1      # 覆盖更新，不破坏 logs/（不在复制列表中）
-```
-
-`logs/` 和用户本地新增的规则不受影响（复制列表只含技能自身文件）。
-
-### 路径 3：Agent 启动自检提示
-
-SKILL.md 指示 Agent 在加载技能时可运行 `cli.py version` 上报版本，
-用户据此决定是否更新。规则文件（`rules/*.yaml`）独立于代码版本，
-用户本地新增的规则在 git 更新时若不冲突会自动保留（git merge 语义）。
-
-### 版本规范
-
-- `VERSION` 文件 + `config.yaml → version` 双写，发布新版本时同步递增
-- `cli.py update` 输出 `version_before/version_after/updated`，便于用户确认
-
-### 模式 B：独立函数库 / CLI / HTTP 服务
-
-不装进 Agent 也能独立运行（此时 LLM 后端可配 openai/claude/ollama/mock）：
-
-```bash
-pip install pyyaml
-
-python main.py --demo                              # 端到端演示（Mock，不联网）
-python main.py --validate suspicious.py            # 校验已有代码
-python main.py --task "实现用户登录接口"            # 独立生成
-uvicorn server:app --port 8399                     # HTTP API
-```
+## Use as a Python library (Mode B)
 
 ```python
 from main import generate_secure_code, validate_code
 
-# 独立生成（backend 按 config.yaml；session 模式注入 Agent 的 LLM）
+# guide at generation time; validation failures trigger the automatic repair loop
 outcome = generate_secure_code(
-    task_description="实现用户登录接口",
+    task_description="implement the user login endpoint",
     language="python", framework="Flask",
-    session_fn=my_agent_llm_generate,   # 或 backend=已创建的后端
 )
-result = validate_code(code_string)     # 仅校验
+print(outcome.code, outcome.passed, outcome.report)
+
+# validate existing code only
+result = validate_code("x = eval(user_input)", language="python")
+print(result.summary())
 ```
 
-## 架构
+or via the HTTP API:
 
-```
-用户任务描述
-     │
-     ▼
-① ContextBuilder  ── 读取 rules/*.yaml + templates/ → 拼装安全 System Prompt
-     │                （角色设定 + 通用规则 + 语言规则 + 黑名单 + few-shot + 自检清单）
-     ▼
-② 生成 ───────────── Agent 自身 LLM（session 模式，推荐）/ OpenAI / Claude / Ollama / Mock
-     │
-     ▼
-③ Validator  ──────── 三引擎：AST 危险调用 + 正则黑名单 + 污点追踪，毫秒级（不依赖 Semgrep）
-     │
-     ├─ 通过 ──► 交付代码 + JSONL 日志
-     ▼ 不通过
-④ RepairLoop  ─────── 混合策略:
-     │                 高危项 → templates/ 确定性替换（零风险，不走 LLM）
-     │                 低/中危 → LLM 局部重写（只改违规片段）
-     │                 最多 3 轮，仍失败 → 漏洞报告 + 标记"需人工修复"
-     ▼
-⑤ SecureLogger  ───── JSONL 全程记录（输入/每轮代码/违规/重试/人工修改 diff）
+```bash
+pip install fastapi uvicorn
+python server.py            # http://127.0.0.1:8399/docs
 ```
 
-### Agent 接入的三种方式（按集成深度递增）
+## Architecture
 
-| 方式 | 说明 | 适用 |
-|------|------|------|
-| **Shell 工具链**（install.ps1） | Agent 通过 Bash 工具调用 `cli.py` 的 context/validate/log/missed 子命令 | 任意 Agent 框架，零代码集成 |
-| **Python session_fn** | 调用 `generate_secure_code(..., session_fn=agent_llm_generate)` 注入 Agent 的 LLM | Python 内嵌 |
-| **MCP/LangChain 工具** | 把 cli.py 子命令包装为工具（见下方示例） | 框架原生工具集成 |
-
-```python
-# LangChain 工具示例
-from langchain.tools import tool
-
-@tool
-def secure_validate(file_path: str) -> str:
-    """校验代码安全性，返回违规列表与修复建议"""
-    import subprocess, json
-    r = subprocess.run(["python", "cli.py", "validate", "--file", file_path],
-                       capture_output=True, text=True, encoding="utf-8")
-    return json.dumps({"exit": r.returncode, **json.loads(r.stdout)}, ensure_ascii=False)
+```
+User Task ──> ① Context Builder ──> ② Generation (Agent LLM) ──> ③ Validator ──> ④ Automatic Repair Loop ──> ⑤ JSONL Log
+                 ▲                                                                       │
+                 └──────────────────────── missed-pattern report (feed the loop) <─────┘
 ```
 
-## 项目结构
+- ① context_builder — injects the security rule list (general rules + blacklists + few-shot templates) into generation
+- ② the agent's own LLM (session) / OpenAI / Claude / Ollama / Mock
+- ③ validator — three engines, millisecond-scale: AST dangerous calls + regex blacklists + taint analysis
+- ④ repair loop — deterministic AST-level fixes first (no LLM), then local/full LLM rewrites; up to 3 rounds
+- ⑤ logger — JSONL with secret masking; `cli.py missed` reports missed detections to drive rule iteration
+
+## Detection coverage (13 languages, 110 rules)
+
+General rules shared across all languages: hardcoded secrets, SQL concatenation, plaintext HTTP,
+weak randomness/hashes, JWT without signature verification, disabled TLS verification, sensitive logs.
+
+| Language | Type | Count |
+|----------|------|-------|
+| Python | language | 22 rules (eval/os.system/pickle + SSRF/XXE/SSTI/path traversal/Zip Slip/NoSQL/ORM/JWT/CORS/open redirect/ReDoS/ML deserialization) |
+| C | language | 7 rules |
+| C++ | language | 2 rules (inherits all C rules) |
+| PHP | language | 7 rules (inherits HTML+JS rules) |
+| HTML | language | 5 rules (inherits JS rules) |
+| JavaScript / Node | language | 9 rules |
+| Go | language | 7 rules |
+| Java / Spring | language | 7 rules |
+| Shell | language | 5 rules |
+| Dockerfile | IaC | 5 rules |
+| Kubernetes | IaC | 5 rules |
+| Terraform | IaC | 5 rules |
+| GitHub Actions | CI | 3 rules |
+| blacklists | all | 13 hard-banned patterns |
+| CWE reference | knowledge | 21 entries |
+
+Language aliases: `C++`→`cpp`, `javascript`/`node`/`nodejs`→`js`, `golang`→`go`, `bash`→`sh`, `docker`→`dockerfile`, `k8s`→`kubernetes`, `tf`→`terraform`, `workflow`/`gha`→`github-actions`.
+
+## Project structure
 
 ```
 Secure-Vibe/
-├── SKILL.md                   # 技能定义（Agent 安装后读取的工作流指令）
-├── install.ps1 / install.sh   # 安装到 Agent 技能目录（含自检）
-├── cli.py                     # Agent 工具链桥（context/validate/log/missed/cwe/selftest）
-├── main.py                    # 独立模式入口：generate_secure_code() / CLI
-├── server.py                  # HTTP API（可选）
-├── config.yaml                # LLM 后端 / 校验 / 修复 / 日志 / 评测配置
+├── SKILL.md                    # the agent skill entry (frontmatter: name + description)
+├── cli.py                      # the agent's unified shell entry (subcommands: context/validate/log/missed/cwe/version/update/selftest)
+├── main.py                     # Python library entry (generate_secure_code / validate_code)
+├── server.py                   # optional FastAPI service
+├── install.ps1 / install.sh    # cross-agent installers (opencode/Codex/Claude Code)
+├── VERSION                     # skill version
 ├── core/
-│   ├── context_builder.py     # ① 安全上下文构建器
-│   ├── llm_backend.py         # ② LLM 可插拔后端（session=Agent 自身模型）
-│   ├── validator.py           # ③ 三引擎实时校验器（AST 危险调用 + 正则黑名单 + 污点追踪）
-│   ├── taint.py               # ③a 轻量污点追踪（输入源→传播→危险 sink 确认）
-│   ├── ast_fixer.py           # ④a AST 确定性修复引擎（零 LLM，安全等价改写）
-│   ├── repair_loop.py         # ④b 混合修复循环
-│   └── logger.py              # ⑤ JSONL 日志
+│   ├── context_builder.py  # step 1: builds the security context (persona + general rules + language rules + blacklists + few-shot + checklist)
+│   ├── validator.py        # step 3: three-engine validator (AST dangerous calls + regex blacklist + taint confirmations)
+│   ├── taint.py            # step 3a: lightweight taint analysis (source -> propagation -> dangerous-sink confirmation)
+│   ├── ast_fixer.py        # step 4a: AST deterministic fix engine (zero LLM, safe equivalent rewrites)
+│   ├── repair_loop.py      # step 4b: hybrid repair loop
+│   ├── llm_backend.py      # pluggable LLM backends (session/openai/claude/ollama/mock)
+│   └── logger.py           # step 5: JSONL logger with secret masking
 ├── rules/
-│   ├── general.yaml           # 通用规则（8 条：密钥/SQL拼接/弱随机/弱哈希/TLS/JWT...，全语言共享）
-│   ├── python.yaml            # Python 规则（22 条：eval/os.system/pickle + SSRF/XXE/SSTI/路径/ZipSlip/NoSQL/ORM/JWT/CORS/重定向/ReDoS/ML 反序列化）
-│   ├── c.yaml                 # C 规则（7 条：system/sprintf/strcpy/格式字符串/scanf/tmpnam...）
-│   ├── cpp.yaml               # C++ 规则（2 条：std:: 不安全函数/拼接命令；继承 C 规则）
-│   ├── php.yaml               # PHP 规则（7 条：shell_exec/eval/SQL拼接超全局/unserialize/include 变量/echo 未转义/extract）
-│   ├── html.yaml              # HTML 规则（5 条：内联事件/javascript: URL/iframe 无 sandbox/CDN 无 SRI/_blank 无 noopener）
-│   ├── js.yaml                # JS/Node 规则（9 条：eval/innerHTML/doc.write/定时器/postMessage/exec 拼接/res.send/原型污染/动态 require）
-│   ├── go.yaml                # Go 规则（7 条：exec 经 shell/SQL 拼接/SSRF/template.HTML/rand/表单入 sink/TLS）
-│   ├── java.yaml              # Java/Spring 规则（7 条：exec 拼接/JDBC 拼接/反序列化/XXE/Random/Actuator/ECB）
-│   ├── sh.yaml                # Shell 规则（5 条：curl|sh/eval/rm -rf/未引号变量/NOPASSWD）
-│   ├── dockerfile.yaml        # Dockerfile 规则（5 条：USER root/密钥入镜像/curl|sh/远程 ADD/latest）
-│   ├── kubernetes.yaml        # K8s 规则（5 条：privileged/hostPath/hostNetwork/root/Secret env）
-│   ├── terraform.yaml         # Terraform 规则（5 条：0.0.0.0/0/public ACL/public RDS/硬编码密钥/全端口）
-│   ├── github-actions.yaml    # GitHub Actions 规则（3 条：表达式注入/密钥入日志/未锁定 action）
-│   └── cwe_reference.yaml     # CWE 参考知识库（21 条，可由 tools/mine_cwe_rules.py 扩充）
-├── blacklist/python.yaml      # Python 硬禁用黑名单（7 条）
-├── blacklist/c.yaml           # C/C++ 硬禁用黑名单（2 条：gets/system变量命令）
-├── blacklist/php.yaml         # PHP 硬禁用黑名单（2 条：超全局直接进命令执行/include）
-├── blacklist/js.yaml          # JS/Node 硬禁用黑名单（2 条：location/URL 直写 innerHTML、用户输入深层合并）
-├── templates/python/          # Python 安全模板（7 个）
-│   ├── db_query.py            #    参数化 SQL
-│   ├── password_hash.py       #    PBKDF2 密码哈希
-│   ├── secure_token.py        #    secrets 安全 token
-│   ├── auth.py                #    安全登录接口
-│   └── file_upload.py         #    安全文件上传
-├── templates/c/               # C 安全模板（snprintf/fgets/execv）
-├── templates/cpp/             # C++ 安全模板（std::string/getline）
-├── templates/php/             # PHP 安全模板（PDO 预处理 + htmlspecialchars）
-├── templates/html/            # HTML 安全模板（CSP/SRI/sandbox/noopener）
-├── templates/js/              # JS/Node 安全模板（textContent/addEventListener/postMessage）
-├── templates/go/              # Go 安全模板（占位符 SQL/exec 参数列表）
-├── templates/sh/              # Shell 安全模板（引号变量/先校验后执行）
-├── templates/java/            # Java 安全模板（PreparedStatement/SecureRandom）
+│   ├── general.yaml           # general rules (8: secrets/SQL concat/weak randomness/weak hashes/TLS/JWT..., shared by every language)
+│   ├── python.yaml            # Python rules (22: eval/os.system/pickle + SSRF/XXE/SSTI/path/ZipSlip/NoSQL/ORM/JWT/CORS/redirect/ReDoS/ML deserialization)
+│   ├── c.yaml                 # C rules (7: system/sprintf/strcpy/format strings/scanf/tmpnam...)
+│   ├── cpp.yaml               # C++ rules (2: std:: unsafe functions/concat commands; inherits C rules)
+│   ├── php.yaml               # PHP rules (7: shell_exec/eval/SQL concat superglobals/unserialize/include vars/unescaped echo/extract)
+│   ├── html.yaml              # HTML rules (5: inline handlers/javascript: URLs/iframe sandbox/SRI/noopener)
+│   ├── js.yaml                # JS rules (9: eval/innerHTML DOM XSS/document.write/string timers/postMessage + Node exec/res.send/prototype pollution/dynamic require)
+│   ├── go.yaml                # Go rules (7: shell-wrapped commands/SQL concat/SSRF/template.HTML/rand/form-to-sink/TLS)
+│   ├── java.yaml              # Java rules (7: exec concat/JDBC concat/deserialization/XXE/Random/Actuator/ECB)
+│   ├── sh.yaml                # Shell rules (5: curl|sh/eval/rm -rf/unquoted vars/NOPASSWD)
+│   ├── dockerfile.yaml        # Dockerfile rules (5: USER root/secrets in image/curl|sh/remote ADD/latest)
+│   ├── kubernetes.yaml        # K8s rules (5: privileged/hostPath/hostNetwork/root/Secret env)
+│   ├── terraform.yaml         # Terraform rules (5: 0.0.0.0/0/public ACL/public RDS/hardcoded secrets/all ports)
+│   ├── github-actions.yaml    # GitHub Actions rules (3: expression injection/secrets in logs/unpinned actions)
+│   └── cwe_reference.yaml     # CWE reference knowledge (21 entries; extendable via tools/mine_cwe_rules.py)
+├── blacklist/python.yaml      # Python hard-bans (7)
+├── blacklist/c.yaml           # C/C++ hard-bans (2: gets/system-with-variable-command)
+├── blacklist/php.yaml         # PHP hard-bans (2: superglobals into exec/include)
+├── blacklist/js.yaml          # JS/Node hard-bans (2: URL source into innerHTML, prototype-pollution merge)
+├── templates/python/          # Python safe templates (7)
+│   ├── db_query.py            #    parameterized SQL
+│   ├── password_hash.py       #    PBKDF2 password hashing
+│   ├── secure_token.py        #    secrets-safe token
+│   ├── auth.py                #    secure login endpoint
+│   └── file_upload.py         #    secure file upload
+├── templates/c/               # C safe templates (snprintf/fgets/execv)
+├── templates/cpp/             # C++ safe templates (std::string/getline)
+├── templates/php/             # PHP safe templates (prepared PDO + htmlspecialchars)
+├── templates/html/            # HTML safe templates (CSP/SRI/sandbox/noopener)
+├── templates/js/              # JS safe templates (textContent/addEventListener/postMessage)
+├── templates/go/              # Go safe templates (placeholder SQL/argv exec)
+├── templates/sh/              # Shell safe templates (quoted variables/verify-before-run)
+├── templates/java/            # Java safe templates (PreparedStatement/SecureRandom)
 ├── tools/
-│   ├── mine_cwe_rules.py      # 从 GHSA-CySec 挖掘 CWE→修复映射；--from-logs 挖漏检模式
-│   ├── run_evaluation.py      # 专业级评测（--local 离线基线 / SecurityEval）
-│   ├── benchmark.py           # 本地基准（检出率/误报率/耗时）
-│   ├── agent_e2e_check.py     # Agent 工具链端到端自检（不联网）
-│   ├── server_smoke.py        # HTTP 服务冒烟测试
-│   └── llm_e2e.py             # 真实 LLM 端到端（--backend mock 离线自检）
-├── tests/                     # 225 个用例（恶意检出 + 安全零误报 + 循环/污点/日志/AST 修复 + C/C++ + 网页 + Go/Shell + IaC + Java/Node + CI）
+│   ├── mine_cwe_rules.py      # mine CWE->fix mappings from GHSA-CySec; --from-logs mines missed patterns
+│   ├── run_evaluation.py      # pro-level evaluation (--local offline baseline / SecurityEval)
+│   ├── benchmark.py           # local benchmark (detection rate / FPR / latency)
+│   ├── agent_e2e_check.py     # offline end-to-end check of the agent toolchain
+│   ├── server_smoke.py        # HTTP service smoke test
+│   └── llm_e2e.py             # real-LLM end-to-end (--backend mock for offline self-test)
+├── tests/                     # 225 cases (detection + zero-false-positive + loop/taint/log/AST fix + C/C++ + web + Go/Shell + IaC + Java/Node + CI)
 ├── docs/
-│   ├── log_format.md          # 日志格式规范
-│   └── evaluation.md          # 专业级评测指南
-└── logs/                      # JSONL 输出
+│   ├── log_format.md          # log format spec
+│   └── evaluation.md          # pro-level evaluation guide
+└── logs/                      # JSONL output (gitignored)
 ```
 
-## 如何扩展规则（无需改动代码）
+## How to add rules (no code changes needed)
 
-在 `rules/python.yaml`（或 `general.yaml`、`c.yaml`、`cpp.yaml`、`php.yaml`、`html.yaml`、`js.yaml`、`go.yaml`、`java.yaml`、`sh.yaml`、`dockerfile.yaml`、`kubernetes.yaml`、`terraform.yaml`、`github-actions.yaml`）中新增一个列表项即可：
+Append one list item to `rules/python.yaml` (or `general.yaml`, `c.yaml`, `cpp.yaml`, `php.yaml`, `html.yaml`, `js.yaml`, `go.yaml`, `java.yaml`, `sh.yaml`, `dockerfile.yaml`, `kubernetes.yaml`, `terraform.yaml`, `github-actions.yaml`):
 
 ```yaml
-- id: PY-011                       # 唯一 ID
+- id: PY-022                        # unique id
   name: my_new_rule
-  severity: high                   # high / medium / low
-  cwe: CWE-XXX                     # 可选
-  message: 人读说明
-  fix_hint: 修复建议（会反馈给 LLM）
-  template: db_query               # 可选，高危项对应的确定性替换模板
-  match:                           # 匹配方式（可组合）
-    ast_calls:                     # AST 危险调用（点路径）
-      - dangerous.func
-    ast_kwargs:                    # AST 参数约束
-      subprocess.call: {shell: literal-true}
-    regex:                         # 正则（按行匹配）
-      - (?i)dangerous_pattern
-    regex_flags: "i"               # 可选
-    exclude_regex:                 # 排除模式（误报豁免）
-      - safe_call
+  severity: high                    # high / medium / low
+  cwe: CWE-XXX                      # optional
+  message: human-readable description
+  fix_hint: repair advice (fed back to the LLM)
+  template: db_query                # optional, deterministic-replacement template for high-risk items
+  match:                            # matching methods (combinable)
+    ast_calls: [eval, exec]         #   dangerous function calls (dot paths)
+    ast_kwargs:                     #   keyword-argument constraints
+      subprocess.run: {shell: literal-true}
+    regex:                          #   regex pattern list (block scalars recommended)
+      - "(?<!w)system("
+    exclude_regex: ["SafeLoader"]   #   exclusion patterns
 ```
 
-两种匹配引擎：
+`ignore_rules` in `config.yaml → validator.ignore_rules` allowslist exception (globally),
+with a justification comment.
 
-- **AST 引擎**（代码可解析时）：`ast_calls` 精确匹配调用点路径（支持 `from x import y`）；
-  `ast_kwargs` 匹配关键字参数（如 `shell=True`）。
-- **正则引擎**（始终执行，容忍片段代码）：按行匹配，自动跳过注释行，支持 `exclude_regex` 豁免。
+## How to add templates (few-shot)
 
-规则 ID 加入 `config.yaml → validator.ignore_rules` 可全局放行。
+Write `templates/<language>/<name>.<ext>` as **provably safe** code; `context_builder` pulls it in
+on-demand via keyword matching (few-shot to keep token usage under control).
+Extending the LLM with safe XDL is the point: `templates/python/` examples, plus `c/cpp/php/html/js/go/sh/java` dirs.
 
-## 如何扩展模板（few-shot）
-
-在 `templates/python/` 下新增 `my_template.py`，并在 `core/context_builder.py` 的
-`TASK_TEMPLATE_HINTS` 中加一行关键词映射，相关任务就会自动带上该 few-shot 示例：
+## How to add languages / extend the model
 
 ```python
-TASK_TEMPLATE_HINTS.append(("加密|encrypt|aes", "my_template"))
+from main import generate_secure_code, validate_code
+from core.validator import Validator
+
+# validate only (no generation, no repair)
+result = validate_code('import os\nos.system("ls")', language="python")
+print(result.passed, result.summary())
+
+# custom validators per language
+v = Validator(language="cpp")   # inherits C rules automatically
+print(v.validate('std::strcpy(dst, src);').summary())
 ```
 
-## 如何迭代（持续优化，无需训练模型）
+## Security of the repair LLM itself
 
-1. **规则沉淀闭环**：日志中的人工修改 diff / 漏检模式 → `cli.py missed` 上报或
-   `POST /feedback` → 人工审核 → 写入 `rules/*.yaml`（git 版本化）。
-2. **数据集挖掘**：`python tools/mine_cwe_rules.py <GHSA-CySec 数据集>` 自动挖掘
-   CWE→修复措施，补充 `rules/cwe_reference.yaml`（见 docs/evaluation.md）。
-3. **命中统计**：按 `docs/log_format.md` 的分析脚本统计规则命中率，低价值规则降级，新攻击升级。
-4. **专业级评测**：接入 SecurityEval 数据集后运行 `tools/run_evaluation.py`，
-   按 `missed_by_cwe` 补规则，重跑验证提升。
-5. 保留人工审核闸口（防规则投毒）。
+[SKILL.md] is the source of truth for reference and evaluation:
+the LLM receives hard "generation-time security constraints"
+(constraints at generation time + repair instructions that "the cone is limited to known vulnerability classes"
+(no natural occlusion — the entire pipeline is reference and evaluation).
+Also: taint-analysis chain records keep worst-case fix correctness (see ③a).
 
-## 运行测试
+## Detection coverage notes
+
+| Stage | Mechanism |
+|-------|-----------|
+| ① **Context injection** | rule list + banned patterns + few-shot safe templates injected into the generation prompt |
+| ② **validation** | three engines, millisecond-scale (AST dangerous calls + regex blacklists + taint confirmations) |
+| ③ **automatic repair** | deterministic AST rewrites (random->secrets, md5->sha256, yaml.load->safe_load, hardcoded secrets->env) + LLM local rewrite; 3 rounds max |
+| ④ **logging** | JSONL with secret masking; assertions/government differences |
+
+## Tests
 
 ```bash
-pip install pytest
-python -m pytest tests/ -q          # 单元 + 集成（92 用例：校验/修复/污点/日志/AST 修复）
-python cli.py selftest              # Agent 工具链自检
-python tools/agent_e2e_check.py     # Agent 工具链端到端（不联网）
-python tools/server_smoke.py        # HTTP 服务冒烟测试（需 fastapi+uvicorn）
-python tools/llm_e2e.py             # 真实 LLM e2e（需 OPENAI_API_KEY 或本地 Ollama）
+python -m pytest tests/ -q          # unit + integration (225: validation/repair/taint/log/AST-fix + all languages)
+python cli.py selftest              # post-install self-test
+python tools/agent_e2e_check.py     # offline agent-toolchain E2E
+python tools/benchmark.py           # local benchmark (detection 1.0 / FPR 0.0 / ~0.16ms)
 ```
 
-## 确定性修复（零 LLM 的安全等价改写）
+## Known limits
 
-高危违规优先由 `core/ast_fixer.py` 做 AST 节点级改写，不走 LLM（毫秒级、零风险）：
+- The regex engine is **line-level**; cross-line data flow is covered by the taint engine (Python only) or blacklist patterns.
+- Sanitizers are not modeled (sound over-approximation: flagging a sanitized value is possible).
+- Other languages (Rust/Ruby/Swift) fall back to general rules only.
 
-| 违规 | 确定性改写 |
-|------|-----------|
-| `insecure_random` | `random.randint(a,b)` → `secrets.randbelow(b-a+1)+a`；`choice` → `secrets.choice`；`getrandbits` → `secrets.randbits` |
-| `weak_hash` | `hashlib.md5/sha1` → `hashlib.sha256` |
-| `unsafe_yaml_load` | `yaml.load(...)` → `yaml.safe_load(...)`（丢弃 `Loader=` 参数） |
-| `hardcoded_secret` | `NAME = "明文"` → `NAME = os.environ.get("NAME", "")`（自动补 `import os`） |
+## License
 
-改写后自动补缺失 import（docstring 之后插入）、`ast.unparse` 还原源码、再校验复验，
-全部在 `deterministic_fix()` 内完成。**无法证明安全等价的违规**（eval/shell=True 命令拆分/
-pickle 反序列化）保留原样交给 LLM 或人工修复。
-
-扩展新改写：在 `core/ast_fixer.py` 的 `_SecureTransformer` 中新增 `visit_*` 方法即可，
-规则引擎与修复逻辑仍互不侵入。
-
-## 检测项覆盖
-
-| 类别 | 检测项 | 规则 ID |
-|------|--------|---------|
-| 危险函数 | eval/exec/compile | PY-001 |
-| 命令注入 | os.system/os.popen、subprocess shell=True | PY-002/003 |
-| SQL 注入 | 字符串拼接/格式化 SQL | GEN-005 |
-| 反序列化 | pickle/yaml.load/marshal | PY-004/005/007 |
-| 硬编码密钥 | API key/密码/私钥/云密钥 | GEN-001 |
-| 明文传输 | http:// 明文链接 | GEN-002 |
-| 弱随机 | random 模块生成安全值 | GEN-003 |
-| 弱哈希 | md5/sha1 | GEN-004 |
-| TLS | verify=False | GEN-008 |
-| JWT | 签名校验关闭 | GEN-007 |
-| 信息泄露 | 敏感信息打印/日志 | GEN-006 |
-| 调试接口 | Flask debug=True、Django DEBUG | PY-008/009 |
-| XSS | Markup/|safe | BL-003 |
-| 输入链 | input/request 直连危险函数 | PY-010 |
-| 动态内建 | getattr(builtins,"eval") 绕过 | BL-005 |
-
-## 污点追踪（语义层检测）
-
-在模式匹配之上，`core/taint.py` 做轻量数据流分析：从污点源（`input()`、`sys.argv`、
-`sys.stdin`、`request.*`、`socket.recv`）沿赋值/拼接/f-string/%/format 传播到危险 sink
-（`os.system`、`eval`、`subprocess(shell=True)`、`pickle.loads`、`yaml.load`）。
-
-- 捕获**变量间接传递**的注入：`cmd = input(); os.system(cmd)`（普通模式也能报 `os.system`，
-  但污点版带完整链条 `input() -> cmd -> os.system`，供 LLM 精确修复）
-- 输出 `checker=taint` 的违规，同 (rule_id, line) 的浅层命中自动让位
-- 建模为 sound over-approximation：**不建模净化函数**（`sanitize()` 后仍算污点），
-  偏保守，误报方向为“多报而非漏报”
-- `config.yaml → validator.taint_analysis: false` 可关闭
+MIT — see [LICENSE](LICENSE).

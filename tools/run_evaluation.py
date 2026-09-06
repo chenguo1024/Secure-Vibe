@@ -1,19 +1,19 @@
-"""run_evaluation.py — 专业级评测（SecurityEval 数据集，可选）.
+"""run_evaluation.py — Pro-level evaluation (SecurityEval dataset, optional).
 
-前置条件:
-  1. 下载 SecurityEval 数据集（网络需可达 GitHub 或使用代理）:
-     git clone https://github.com/s2labres/security-eval.git <路径>
-     # 国内可用镜像/代理，或手动下载后配置 config.yaml → evaluation.securityeval_path
-  2. config.yaml: evaluation.enabled: true + securityeval_path: <路径>
+Prerequisites:
+  1. download the SecurityEval dataset (from GitHub, use a proxy):
+     # or download via mirror/proxy and set config.yaml -> evaluation.securityeval_path
+  2. config.yaml: evaluation.enabled: true + securityeval_path: <path>
+  2. config.yaml: evaluation.enabled: true + securityeval_path: <path>
 
-用法:
-    python tools/run_evaluation.py                # 按 config.yaml 配置运行
-    python tools/run_evaluation.py --path <数据集路径>
+Usage:
+    python tools/run_evaluation.py                # read config.yaml
+      python tools/run_evaluation.py --path <dataset path>
 
-指标（config.yaml → evaluation.metrics）:
-    - detection_rate       恶意样本检出率
-    - false_positive_rate  安全样本误报率
-    - avg_latency_ms       平均校验耗时
+Metrics (config.yaml -> evaluation.metrics):
+      - detection_rate       malicious-sample detection rate
+      - false_positive_rate  safe-sample false-positive rate
+      - avg_latency_ms       average validation latency
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ try:
     import yaml
     from core.validator import Validator
 except ImportError as exc:
-    print(f"缺少依赖: {exc}", file=sys.stderr)
+    print(f"missing dependency: {exc}", file=sys.stderr)
     sys.exit(2)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -42,12 +42,12 @@ def load_eval_config() -> dict:
 
 
 def load_securityeval_samples(dataset_path: Path):
-    """加载 SecurityEval 样本。
+    """Parse a SecurityEval directory.
 
-    SecurityEval 结构: Id_<CWE> 目录下Pareto Properties/*.json（insecure prompt + eval）
-    兼容格式:
+    SecurityEval structure: Id_<CWE> dirs / Pareto Properties/*.json (insecure prompt + eval)
+    Sample format:
       - JSONL: {"id", "prompt"/"code", "insecure"(bool), "cwe"}
-      - 目录: samples/*.json 同上
+    - directories: same as samples/*.json
     """
     samples = []
     if dataset_path.is_file():
@@ -80,7 +80,7 @@ def load_securityeval_samples(dataset_path: Path):
             cwe = item.get("cwe") or ""
             samples.append({"code": code, "insecure": bool(insecure), "cwe": cwe, "source": str(f)})
 
-    # 兜底：目录里只有 .py 源码且无标注 → 全部视为"待检测"(insecure=True)做检出率统计
+        # fallback: directories containing only unlabeled .py sources -> treat all as "malicious" (insecure=True) to keep the metric definition consistent
     if not samples:
         for f in sorted(dataset_path.rglob("*.py")):
             try:
@@ -127,10 +127,10 @@ def evaluate(samples, language: str = "python") -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Secure-Vibe 专业级评测（SecurityEval）")
-    ap.add_argument("--path", default="", help="SecurityEval 数据集路径（覆盖 config.yaml）")
-    ap.add_argument("--local", action="store_true", help="使用内置用例集跑离线基准（无需外部数据集）")
-    ap.add_argument("--corpus", default="", help="通用标注语料：JSONL 每行 {code,insecure,cwe}，或目录递归扫描")
+    ap = argparse.ArgumentParser(description="Secure-Vibe pro-level evaluation (SecurityEval)")
+    ap = argparse.ArgumentParser(description="Secure-Vibe pro-level evaluation (SecurityEval)")
+    ap.add_argument("--path", default="", help="SecurityEval dataset path (defaults to config.yaml)")
+    ap.add_argument("--local", action="store_true", help="offline baseline on built-in samples (no external dataset)")
     args = ap.parse_args()
 
     if args.local:
@@ -141,37 +141,37 @@ def main() -> int:
         out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=1))
-        print(f"\n离线基准报告已写入: {out}")
+        print(f"\noffline benchmark report written to: {out}")
         return 0
 
     if args.corpus:
         samples = load_securityeval_samples(Path(args.corpus))
         if not samples:
-            print("未能从语料解析样本，格式要求见 docs/evaluation.md", file=sys.stderr)
+            print("cannot run corpus evaluation: check the path/format -> docs/evaluation.md", file=sys.stderr)
             return 2
         result = evaluate(samples)
         out = PROJECT_ROOT / "logs" / "evaluation_report.json"
         out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
         print(json.dumps(result, ensure_ascii=False, indent=1))
-        print(f"\n报告已写入: {out}")
+        print(f"\nreport written to: {out}")
         return 0
 
     cfg = load_eval_config()
     path = args.path or cfg.get("securityeval_path", "")
     if not path or not Path(path).is_dir():
-        print("未配置 SecurityEval 数据集路径。两步方案：\n"
-              "  离线基线: python tools/run_evaluation.py --local\n"
-              "  通用语料: python tools/run_evaluation.py --corpus <jsonl或目录>\n"
-              "  论文级评测:\n"
-              "    1. python tools/fetch_datasets.py --securityeval --dir D:/datasets\n"
-              "    2. config.yaml: evaluation.securityeval_path: <路径>\n"
-              "    3. 重新运行本脚本", file=sys.stderr)
+        print("no SecurityEval dataset path configured, usage:\n"
+              "  offline: python tools/run_evaluation.py --local\n"
+              "  corpus: python tools/run_evaluation.py --corpus <jsonl or dir>\n"
+          "  benchmark:\n"
+          "    1. download SecurityEval locally\n"
+          "    2. config.yaml: evaluation.securityeval_path: <path>\n"
+          "    3. re-run this script", file=sys.stderr)
         return 2
 
     samples = load_securityeval_samples(Path(path))
     if not samples:
-        print("未从数据集解析出样本，请检查数据集格式（见 docs/evaluation.md）", file=sys.stderr)
+        print("dataset entry points not found; check the top structure/format -> docs/evaluation.md", file=sys.stderr)
         return 2
 
     result = evaluate(samples)
@@ -179,7 +179,7 @@ def main() -> int:
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=1))
-    print(f"\n报告已写入: {out}")
+    print(f"\nreport written to: {out}")
     return 0
 
 

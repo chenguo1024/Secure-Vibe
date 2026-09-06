@@ -1,11 +1,11 @@
-# rules/terraform.yaml — Terraform 安全规则（正则引擎；tf/hcl 别名归一化）
+# rules/terraform.yaml — Terraform security rules (regex engine)
 
 - id: TF-001
   name: tf_open_sg_cidr
   severity: high
   cwe: CWE-284
-  message: 安全组开放 0.0.0.0/0（对所有互联网开放）
-  fix_hint: 入站规则限定办公网/负载均衡的固定地址段；管理端口（22/3389/数据库端口）绝不对全网开放。
+  message: "Security group open to 0.0.0.0/0 (exposed to the entire internet) | 安全组开放 0.0.0.0/0（对所有互联网开放）"
+  fix_hint: "Restrict ingress to office/LB IP ranges; never open management ports (22/3389/database ports) to the whole internet. | 入站规则限定办公网/负载均衡的固定地址段；管理端口（22/3389/数据库端口）绝不对全网开放。"
   match:
     regex:
       - >-
@@ -16,12 +16,13 @@
       - >-
         egress|outbound
 
+
 - id: TF-002
   name: tf_public_s3_acl
   severity: high
   cwe: CWE-284
-  message: S3/对象存储授权 public-read 或公开访问
-  fix_hint: 桶默认 private；确需公开用 CloudFront+OAC/CDN 分发替代直接公开桶。
+  message: "S3/object storage granted public-read or public access | S3/对象存储授权 public-read 或公开访问"
+  fix_hint: "Keep buckets private by default; distribute publicly via CDN (CloudFront + OAC) instead of directly exposing the bucket. | 桶默认 private；确需公开用 CloudFront+OAC/CDN 分发替代直接公开桶。"
   match:
     regex:
       - >-
@@ -30,24 +31,26 @@
         (?i)(aws_s3_bucket_public_access_block|block_public_acls|ignore_public_acls)\s*.*=\s*false
     exclude_regex: []
 
+
 - id: TF-003
   name: tf_public_rds
   severity: high
   cwe: CWE-284
-  message: 数据库实例公开可访问（publicly_accessible）
-  fix_hint: publicly_accessible = false；数据库只对 VPC 内服务开放。
+  message: "Database instance is publicly accessible (publicly_accessible) | 数据库实例公开可访问（publicly_accessible）"
+  fix_hint: "Set publicly_accessible = false; only allow access from inside the VPC. | publicly_accessible = false；数据库只对 VPC 内服务开放。"
   match:
     regex:
       - >-
         (?i)publicly_accessible\s*=\s*true
     exclude_regex: []
 
+
 - id: TF-004
   name: tf_secret_in_default
   severity: high
   cwe: CWE-798
-  message: 变量/资源默认值硬编码密钥
-  fix_hint: 使用 variable + sensitive = true（无 default），值走环境变量/Key Vault；禁止 default 里写真实密钥。
+  message: "Hardcoded secrets in variable/resource defaults | 变量/资源默认值硬编码密钥"
+  fix_hint: "Declare variables with sensitive = true (no default); supply values from environment/vault; never put real secrets into default. | 使用 variable + sensitive = true（无 default），值走环境变量/Key Vault；禁止 default 里写真实密钥。"
   match:
     regex:
       - >-
@@ -58,14 +61,16 @@
       - >-
         \$\{|var\.|<[^>]+>|null|placeholder|changeme|change_me|example
 
+
 - id: TF-005
   name: tf_open_ingress_all_ports
   severity: medium
   cwe: CWE-284
-  message: 入站规则开放所有端口（from_port 0 to_port 0 或 -1）
-  fix_hint: 放行最小端口集合；绝不放行 from_port=0 to_port=0/65535。
+  message: "Ingress rule opens all ports (from_port 0 with to_port 0 or -1) | 入站规则开放所有端口（from_port 0 to_port 0 或 -1）"
+  fix_hint: "Allow the minimum port set only; never from_port=0 to_port=0/65535. | 放行最小端口集合；绝不放行 from_port=0 to_port=0/65535。"
   match:
     regex:
       - >-
         (?i)\b(?:from_port\s*=\s*0|to_port\s*=\s*(?:65535|-1))\b
     exclude_regex: []
+

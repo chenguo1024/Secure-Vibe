@@ -1,13 +1,11 @@
-# blacklist/c.yaml — C/C++ 危险模式黑名单（与 rules 格式一致；cpp 经继承链自动加载）
-# 本文件存放"硬禁用"模式：出现即判不通过，通常无商量余地。
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+# blacklist/c.yaml — C/C++ hard-banned patterns (cpp inherits c)
 
 - id: BLC-001
   name: c_banned_gets
   severity: high
   cwe: CWE-242
-  message: 使用 gets()（已从 C11 移除，缓冲区溢出必然发生）
-  fix_hint: 使用 fgets(buf, sizeof(buf), stdin) 替代 gets；gets 无法限制读入长度，任何使用都不可接受。
+  message: "gets() used (removed in C11 - buffer overflow is inevitable) | 使用 gets()（已从 C11 移除，缓冲区溢出必然发生）"
+  fix_hint: "Use fgets(buf, sizeof(buf), stdin); gets cannot limit input length, so any use is unacceptable. | 使用 fgets(buf, sizeof(buf), stdin) 替代 gets；gets 无法限制读入长度，任何使用都不可接受。"
   match:
     regex:
       - >-
@@ -16,12 +14,13 @@
         std::\s*gets\s*\(
     exclude_regex: []
 
+
 - id: BLC-002
   name: c_system_variable_command
   severity: high
   cwe: CWE-78
-  message: system/popen 以变量为命令参数（命令注入高风险）
-  fix_hint: system 的命令参数必须是编译期常量字符串；需要动态参数时用 execve/fork+exec（argv 数组），并对用户输入做白名单校验。
+  message: "system/popen called with a variable command argument (command injection - high risk) | system/popen 以变量为命令参数（命令注入高风险）"
+  fix_hint: "The command argument to system must be a compile-time constant; for dynamic parameters use fork+execve (argv array) and whitelist user input. | system 的命令参数必须是编译期常量字符串；需要动态参数时用 execve/fork+exec（argv 数组），并对用户输入做白名单校验。"
   match:
     regex:
       - >-
@@ -29,3 +28,4 @@
     exclude_regex:
       - >-
         \b(system|popen)\s*\(\s*"
+

@@ -1,6 +1,6 @@
-"""tests/test_web.py — PHP/HTML/JS 网页开发规则测试.
+"""tests/test_web.py — PHP/HTML/JS web-development rule tests.
 
-注：恶意样本字符串在运行时拼接（防止本机 Defender 误隔离测试文件）。
+Note: malicious sample strings are assembled at runtime (keeps full attack payloads off disk, avoiding AV quarantine).
 """
 import sys
 from pathlib import Path
@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.context_builder import build_prompts, load_rules_for_prompt  # noqa: E402
 from core.validator import Validator, language_chain, normalize_language  # noqa: E402
 
-# --- 运行时拼接的样本片段（避免完整攻击串落盘被安全软件隔离） ---
+# --- runtime-assembled payload fragments (full attack strings never hit the disk) ---
 _PHP = "<?php "
 _END = " ?>"
 _EV = "e" + "val($_P" + "OST[\"code\"]); "
@@ -34,7 +34,8 @@ def ids(result):
 
 
 # ---------------------------------------------------------------------------
-# 语言归一化与继承链
+# --------------------------------------------------------------------------
+# language normalization & inheritance chains
 # ---------------------------------------------------------------------------
 
 def test_language_normalization_web():
@@ -52,11 +53,12 @@ def test_php_inherits_html_js_rules():
     v = Validator("php")
     rule_ids = {r.id for r in v.rules}
     assert {"PHP-001", "HTML-002", "JS-001", "GEN-001"} <= rule_ids
-    assert {"BLP-001", "BLJ-001"} <= rule_ids  # 黑名单也继承
+    assert {"BLP-001", "BLJ-001"} <= rule_ids  # blacklists inherit too
 
 
 # ---------------------------------------------------------------------------
-# PHP 恶意用例检出
+# --------------------------------------------------------------------------
+# PHP malicious cases
 # ---------------------------------------------------------------------------
 
 def test_php_detects_shell_exec():
@@ -83,11 +85,11 @@ def test_php_detects_unserialize_superglobal():
 
 
 def test_php_detects_include_variable():
-    # 间接场景：先赋值再 include（只有 PHP-005 命中）
+    # indirect case: assign first, then include (only PHP-005 fires)
     code = _PHP + "$page = $_G" + "ET[\"page\"]; " + _INC + _END
     r = validate(code, "php")
     assert "PHP-005" in ids(r)
-    # 直接场景：超全局直接进 include（黑名单 BLP-002）
+    # direct case: superglobal straight into include (blacklist BLP-002)
     direct = _PHP + _INC.replace("$page", "$_G" + "ET[\"p\"]") + _END
     assert "BLP-002" in ids(validate(direct, "php"))
 
@@ -101,7 +103,7 @@ def test_php_detects_extract():
 
 
 def test_php_detects_mixed_html_js_fragments():
-    # 混合文件：PHP 文件中的 HTML/JS 片段被继承规则覆盖
+    # mixed file: HTML/JS fragments in a PHP file are covered by the inherited rules
     code = (
         '<html><body>\n'
         '<a href="javascript:go()">x</a>\n'
@@ -114,7 +116,8 @@ def test_php_detects_mixed_html_js_fragments():
 
 
 # ---------------------------------------------------------------------------
-# JS 恶意用例检出
+# --------------------------------------------------------------------------
+# JS malicious cases
 # ---------------------------------------------------------------------------
 
 def test_js_detects_eval_and_new_function():
@@ -142,7 +145,8 @@ def test_js_detects_postmessage_wildcard():
 
 
 # ---------------------------------------------------------------------------
-# HTML 恶意用例检出
+# --------------------------------------------------------------------------
+# HTML malicious cases
 # ---------------------------------------------------------------------------
 
 def test_html_detects_javascript_url():
@@ -166,7 +170,8 @@ def test_html_detects_blank_no_noopener():
 
 
 # ---------------------------------------------------------------------------
-# 安全代码零误报
+# --------------------------------------------------------------------------
+# safe code, zero false positives
 # ---------------------------------------------------------------------------
 
 def test_php_safe_code_passes():
@@ -211,7 +216,8 @@ def test_js_no_syntax_error_reported():
 
 
 # ---------------------------------------------------------------------------
-# 上下文构建（多语言）
+# --------------------------------------------------------------------------
+# context building (multi-language)
 # ---------------------------------------------------------------------------
 
 def test_context_php_includes_inherited_rules():

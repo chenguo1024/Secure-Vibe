@@ -1,39 +1,43 @@
 # Security Policy
 
-Secure-Vibe 是一个**生成时安全**辅助工具：它在 AI Agent 写代码之前注入安全规则、
-之后毫秒级校验并循环修复。它无法 100% 替代人工安全评审——它给出的是高置信度护栏，
-尤其正则引擎是**行级**检测，完整污点追踪目前仅覆盖 Python。
+Secure-Vibe is a **secure-at-generation** assistant tool: it injects security rules before the AI Agent writes code,
+then validates in milliseconds afterwards and loops to repair. It cannot 100% replace manual security review — what it
+provides is a high-confidence guardrail; in particular, the regex engine performs **line-level** detection, and complete
+taint analysis currently covers only Python.
 
-## 支持的版本
+## Supported Versions
 
-| 版本 | 支持状态 |
+| Version | Support Status |
 |------|----------|
-| 最新 main 分支 | ✅ 受支持 |
+| Latest main branch | ✅ Supported |
 
-历史版本不提供安全修复，请始终使用最新版（安装为 git 管理后可 `cli.py update` 一键更新）。
+Historical versions do not receive security fixes; always use the latest version (after installing as a git-managed
+checkout, run `cli.py update` for a one-click update).
 
-## 上报漏洞 / 漏检模式
+## Reporting Vulnerabilities / Missed Detection Patterns
 
-### 如果你发现校验器漏检了某种攻击模式（推荐，直接进入迭代闭环）
+### If you find the validator missed an attack pattern (recommended; goes directly into the iteration loop)
 
 ```bash
-python cli.py missed --pattern "<模式描述或代码片段>" --note "<说明>"
+python cli.py missed --pattern "<pattern description or code snippet>" --note "<description>"
 ```
 
-- 或发 Issue，并在标题加上 `[missed]` 前缀。
-- 说明触发场景（语言/框架）、示例代码片段、期望命中的规则类型即可。
+- Or file an Issue with the `[missed]` prefix in the title.
+- Include the trigger scenario (language/framework), an example code snippet, and the rule type expected to match.
 
-### 如果你发现 Skill 本身的安全漏洞
+### If you find a security vulnerability in the Skill itself
 
-- 直接开 Issue，或私下联系维护者。
-- 请提供：受影响版本、复现步骤、预期与实际行为。
+- File an Issue directly, or contact the maintainer privately.
+- Please provide: affected version, reproduction steps, and expected vs. actual behavior.
 
-## 敏感信息注意
+## Sensitive Information Notice
 
-- 报告漏检模式时**不要粘贴真实密钥/密码/内部 URL**，用占位符（如 `sk-****`、`example.com`）替换。
-- 本项目日志默认开启密钥掩码（`config.yaml → logging.mask_secrets`），上报日志片段前请再次确认已脱敏。
+- When reporting a missed detection pattern, **do not paste real keys/passwords/internal URLs**; replace them with
+  placeholders (e.g., `sk-****`, `example.com`).
+- Secret masking is enabled by default in this project's logs (`config.yaml → logging.mask_secrets`); re-confirm
+  desensitization before sharing log excerpts.
 
-## 免责声明
+## Disclaimer
 
-Secure-Vibe 按 AS-IS 提供（MIT License），不构成安全合规保证。请结合
-人工评审、SAST/DAST、依赖扫描等环节共同使用。
+Secure-Vibe is provided AS-IS (MIT License) and does not constitute a security compliance guarantee. Use it together
+with manual review, SAST/DAST, dependency scanning, and other processes.

@@ -1,12 +1,12 @@
-"""main.py — Secure-Vibe 入口.
+"""main.py — Secure-Vibe entry point.
 
-函数入口:
+Function API:
     generate_secure_code(task_description, language, framework, context)
 
 CLI:
-    python main.py --task "实现用户登录接口" --language python --framework Flask
-    python main.py --validate suspicious.py       # 仅校验已有代码
-    python main.py --demo                         # Mock 后端端到端演示（不联网）
+    python main.py --task "implement user login endpoint" --language python --framework Flask
+    python main.py --validate suspicious.py       # validate existing code only
+    python main.py --demo                         # offline end-to-end demo on the Mock backend
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-# 支持 python main.py 直接运行
+# so `python main.py` works directly
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
@@ -27,7 +27,7 @@ try:
     from core.repair_loop import GenerationOutcome, generate_secure_code as _run_generation
     from core.validator import Validator
 except ImportError as exc:
-    print(f"[Secure-Vibe] 缺少依赖: {exc}\n请先: pip install pyyaml", file=sys.stderr)
+    print(f"[Secure-Vibe] missing dependency: {exc}\nrun: pip install pyyaml", file=sys.stderr)
     sys.exit(1)
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -35,16 +35,16 @@ DEFAULT_CONFIG = PROJECT_ROOT / "config.yaml"
 
 
 # ---------------------------------------------------------------------------
-# 配置加载
+# config loading
 # ---------------------------------------------------------------------------
 
 def load_config(config_path: Optional[Path] = None) -> dict[str, Any]:
-    """加载 config.yaml，环境变量 SECURE_VIBE_* 可覆盖 llm.backend。"""
+    """Load config.yaml; env var SECURE_VIBE_* overrides llm.backend."""
     path = config_path or DEFAULT_CONFIG
     cfg: dict[str, Any] = {}
     if path.is_file():
         cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    # 环境变量覆盖: SECURE_VIBE_LLM_BACKEND=openai
+    # environment override: SECURE_VIBE_LLM_BACKEND=openai
     env_backend = os.environ.get("SECURE_VIBE_LLM_BACKEND")
     if env_backend:
         cfg.setdefault("llm", {})["backend"] = env_backend
@@ -52,7 +52,7 @@ def load_config(config_path: Optional[Path] = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 核心入口函数
+# core entry functions
 # ---------------------------------------------------------------------------
 
 def generate_secure_code(
@@ -60,16 +60,16 @@ def generate_secure_code(
     language: str = "python",
     framework: str = "",
     context: str = "",
-    backend: Optional[Any] = None,          # 已创建的 LLM 后端；None 则按 config 创建
+    backend: Optional[Any] = None,          # pre-built LLM backend; None builds one from config
     session_fn: Optional[Callable[[str, str], str]] = None,
     config_path: Optional[Path] = None,
     logger: Optional[SecureLogger] = None,
     on_round: Optional[Callable[[Any], None]] = None,
     validate_only_rules: bool = False,
 ) -> GenerationOutcome:
-    """生成"安全代码"——生成时引导，校验不通过自动修复。
+    """Generate "secure code" — guided at generation time with automatic repair on validation failure.
 
-    这是给调用方（脚本 / Agent / HTTP 服务）使用的主入口。
+    This is the main entry point for callers (scripts / agents / HTTP services).
     """
     cfg = load_config(config_path)
     llm_cfg = LLMConfig(
@@ -82,12 +82,12 @@ def generate_secure_code(
     )
     repair_cfg = cfg.get("repair", {}) or {}
     if backend is None:
-        # session 后端必须注入 session_fn；未注入时优雅降级为 mock（开箱可用，
-        # 这是 Agent 通过 cli.py 走的路径，不经过此入口）
+        # the session backend must be injected via session_fn; without it, gracefully
+        # fall back to mock (works out of the box; agents normally enter via cli.py)
         if llm_cfg.backend == "session" and session_fn is None:
             llm_cfg.backend = "mock"
-            print("[Secure-Vibe] 提示: 未注入 session_fn，session 后端降级为 mock（可用 SECURE_VIBE_LLM_BACKEND 覆盖）",
-                  file=sys.stderr)
+            print("[Secure-Vibe] note: no session_fn injected; session backend falls back to mock "
+                  "(override with SECURE_VIBE_LLM_BACKEND)", file=sys.stderr)
         backend = create_backend(llm_cfg, session_fn=session_fn)
 
     if logger is None:
@@ -122,7 +122,7 @@ def generate_secure_code(
 
 def validate_code(code: str, language: str = "python",
                   ignore_rules: Optional[list[str]] = None) -> Any:
-    """仅校验：对已有代码做实时安全校验（不生成、不修复）。"""
+    """Validate only: real-time security validation of existing code (no generation, no repair)."""
     cfg = load_config()
     ignore = ignore_rules or (cfg.get("validator", {}) or {}).get("ignore_rules", [])
     v = Validator(language=language, ignore_rules=ignore)
@@ -134,13 +134,13 @@ def validate_code(code: str, language: str = "python",
 # ---------------------------------------------------------------------------
 
 def _cmd_demo() -> int:
-    """端到端演示：Mock 后端返回带漏洞代码 → 校验器拦截 → 修复循环。不联网。"""
+    """End-to-end demo: Mock backend returns flawed code -> the validator blocks it -> repair loop. Offline."""
     print("=" * 64)
-    print("Secure-Vibe 端到端演示（Mock 后端，不联网）")
+    print("Secure-Vibe end-to-end demo (Mock backend, offline)")
     print("=" * 64)
 
     def mock_script(system: str, user: str, call_idx: int) -> str:
-        # 第 1 次调用返回带漏洞代码；修复轮返回修复后的代码
+        # first call returns flawed code; repair rounds return the fixed code
         if call_idx == 0:
             return '''```python
 import sqlite3
@@ -168,7 +168,7 @@ def login(username, password):
 
     from core.llm_backend import MockBackend
     outcome = generate_secure_code(
-        task_description="实现用户登录接口",
+        task_description="implement user login endpoint",
         language="python",
         framework="sqlite",
         backend=MockBackend(script=mock_script),
@@ -176,13 +176,13 @@ def login(username, password):
     print()
     print(outcome.summary())
     print()
-    print("--- 最终代码 ---")
+    print("--- final code ---")
     print(outcome.code)
     if outcome.report:
         print()
         print(outcome.report)
     print()
-    print("日志已写入 logs/ 目录（JSONL 格式）")
+    print("log written to the logs/ directory (JSONL format)")
     return 0 if outcome.passed else 1
 
 
@@ -190,7 +190,7 @@ def _cmd_validate(path: str) -> int:
     code = Path(path).read_text(encoding="utf-8", errors="replace")
     result = validate_code(code)
     print(result.summary())
-    print(f"\n耗时: {result.elapsed_ms:.1f}ms")
+    print(f"\nelapsed: {result.elapsed_ms:.1f}ms")
     return 0 if result.passed else 1
 
 
@@ -213,13 +213,13 @@ def _cmd_generate(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="secure-vibe", description="生成时安全的代码生成 Skill")
-    ap.add_argument("--task", help="任务描述")
-    ap.add_argument("--language", default="python", help="目标语言（默认 python）")
-    ap.add_argument("--framework", default="", help="框架，如 Flask / FastAPI")
-    ap.add_argument("--context", default="", help="上下文补充说明（文本或文件路径）")
-    ap.add_argument("--validate", metavar="FILE", help="仅校验指定代码文件")
-    ap.add_argument("--demo", action="store_true", help="运行端到端 Mock 演示")
+    ap = argparse.ArgumentParser(prog="secure-vibe", description="Secure-by-generation coding skill")
+    ap.add_argument("--task", help="task description")
+    ap.add_argument("--language", default="python", help="target language (default python)")
+    ap.add_argument("--framework", default="", help="framework, e.g. Flask / FastAPI")
+    ap.add_argument("--context", default="", help="additional context (text or a file path)")
+    ap.add_argument("--validate", metavar="FILE", help="validate the given code file only")
+    ap.add_argument("--demo", action="store_true", help="run the end-to-end Mock demo")
     args = ap.parse_args(argv)
 
     if args.demo:

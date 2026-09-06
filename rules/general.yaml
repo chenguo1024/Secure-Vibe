@@ -1,13 +1,11 @@
-# rules/general.yaml — 跨语言通用安全规则（正则引擎）
-# 扩展方法：新增一条规则即新增一个列表项，无需改动代码。详见 README.md。
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+# rules/general.yaml — Cross-language general security rules (regex engine)
 
 - id: GEN-001
   name: hardcoded_secret
   severity: high
   cwe: CWE-798
-  message: 检测到硬编码密钥/密码/API Key
-  fix_hint: 不要在代码中硬编码密钥。改从环境变量读取（os.environ），或在部署时注入配置；同时轮换已泄露的密钥。
+  message: "Hardcoded secret/password/API key detected | 检测到硬编码密钥/密码/API Key"
+  fix_hint: "Never hardcode secrets in code; read from environment variables (os.environ) or inject at deploy time; rotate any exposed secrets. | 不要在代码中硬编码密钥。改从环境变量读取（os.environ），或在部署时注入配置；同时轮换已泄露的密钥。"
   template: secure_config
   match:
     regex:
@@ -27,12 +25,13 @@
       - >-
         (?i)\{\{|\$\{|<[^>]+>|your[_-]?key|your[_-]?api|xxx+|placeholder|changeme|dummy|test[_-]?key|os\.environ|getenv
 
+
 - id: GEN-002
   name: plaintext_http
   severity: low
   cwe: CWE-319
-  message: 使用明文 HTTP 链接，传输未加密
-  fix_hint: 改用 https://；确需 http（如本地调试）时请显式注释说明原因。
+  message: "Plaintext HTTP URL used - traffic is unencrypted | 使用明文 HTTP 链接，传输未加密"
+  fix_hint: "Use https://; if plain http is truly necessary (e.g. local debugging) add an explicit comment explaining why. | 改用 https://；确需 http（如本地调试）时请显式注释说明原因。"
   match:
     regex:
       - >-
@@ -41,12 +40,13 @@
       - >-
         \b//\s.*http://
 
+
 - id: GEN-003
   name: insecure_random
   severity: medium
   cwe: CWE-338
-  message: 使用不安全的随机数（random 模块）生成安全相关值
-  fix_hint: 安全用途（token、密码重置码、会话 ID、密钥）必须使用 secrets 模块：secrets.token_hex / secrets.token_urlsafe / secrets.choice。
+  message: "Insecure randomness (random module) used for security-sensitive values | 使用不安全的随机数（random 模块）生成安全相关值"
+  fix_hint: "Security uses (tokens, password reset codes, session IDs, keys) must use the secrets module: secrets.token_hex / secrets.token_urlsafe / secrets.choice. | 安全用途（token、密码重置码、会话 ID、密钥）必须使用 secrets 模块：secrets.token_hex / secrets.token_urlsafe / secrets.choice。"
   template: secure_token
   match:
     ast_calls:
@@ -57,16 +57,15 @@
       - random.uniform
       - random.sample
       - random.getrandbits
-  exclude_regex:
-    - >-
-      random\.seed\(.*random
+    exclude_regex: []
+
 
 - id: GEN-004
   name: weak_hash
   severity: medium
   cwe: CWE-327
-  message: 使用弱哈希算法（md5/sha1）
-  fix_hint: 密码存储用 bcrypt/argon2/scrypt；完整性校验用 hashlib.sha256 及以上。md5/sha1 仅可用于缓存键等非安全场景。
+  message: "Weak hash algorithm (md5/sha1) | 使用弱哈希算法（md5/sha1）"
+  fix_hint: "Store passwords with bcrypt/argon2/scrypt; use hashlib.sha256 or stronger for integrity. md5/sha1 only for non-security uses like cache keys. | 密码存储用 bcrypt/argon2/scrypt；完整性校验用 hashlib.sha256 及以上。md5/sha1 仅可用于缓存键等非安全场景。"
   template: password_hash
   match:
     ast_calls:
@@ -75,13 +74,15 @@
     regex:
       - >-
         (?i)\b(MD5|SHA1)\s*\(
+    exclude_regex: []
+
 
 - id: GEN-005
   name: sql_string_concat
   severity: high
   cwe: CWE-89
-  message: 检测到 SQL 语句字符串拼接/格式化（SQL 注入风险）
-  fix_hint: 使用参数化查询：cursor.execute(sql, params)，或 ORM 的绑定参数；禁止 f-string/%/.format/+ 拼接 SQL。
+  message: "SQL statement string concatenation/formatting detected (SQL injection risk) | 检测到 SQL 语句字符串拼接/格式化（SQL 注入风险）"
+  fix_hint: "Use parameterized queries: cursor.execute(sql, params) or ORM bound parameters; never build SQL via f-string/%/.format/+ concatenation. | 使用参数化查询：cursor.execute(sql, params)，或 ORM 的绑定参数；禁止 f-string/%/.format/+ 拼接 SQL。"
   template: db_query
   match:
     regex:
@@ -105,12 +106,13 @@
       - >-
         execute\s*\([^,)]*,\s*[\[\(]?\s*\w+\s*[\]\)]?\s*\)
 
+
 - id: GEN-006
   name: sensitive_print
   severity: low
   cwe: CWE-532
-  message: 可能把密码/密钥/token 打印或写入日志
-  fix_hint: 不要将敏感凭据输出到日志/stdout；如需调试请输出掩码（如 sk-****）。
+  message: "Password/key/token may be printed or written to logs | 可能把密码/密钥/token 打印或写入日志"
+  fix_hint: "Do not write sensitive credentials to logs/stdout; when debugging, print a masked value (e.g. sk-****). | 不要将敏感凭据输出到日志/stdout；如需调试请输出掩码（如 sk-****）。"
   match:
     regex:
       - >-
@@ -121,12 +123,13 @@
       - >-
         mask|\*{3,}|redact|len\(
 
+
 - id: GEN-007
   name: jwt_no_verify
   severity: high
   cwe: CWE-347
-  message: JWT 解码未校验签名
-  fix_hint: 必须使用带密钥和算法校验的 jwt.decode(token, key, algorithms=[...])；禁止关闭签名校验的 options 配置。
+  message: "JWT decoded without signature verification | JWT 解码未校验签名"
+  fix_hint: "Must use jwt.decode(token, key, algorithms=[...]); never disable signature verification via options. | 必须使用带密钥和算法校验的 jwt.decode(token, key, algorithms=[...])；禁止关闭签名校验的 options 配置。"
   match:
     regex:
       - >-
@@ -135,12 +138,13 @@
         (?i)jwt\.decode\s*\([^)]*verify\s*=\s*False
     exclude_regex: []
 
+
 - id: GEN-008
   name: tls_verification_disabled
   severity: medium
   cwe: CWE-295
-  message: 禁用了 TLS 证书校验
-  fix_hint: 保持 verify=True（默认）；自签名证书应加入信任库，而不是关闭校验。
+  message: "TLS certificate verification disabled | 禁用了 TLS 证书校验"
+  fix_hint: "Keep verify=True (default); add self-signed certs to the trust store instead of disabling verification. | 保持 verify=True（默认）；自签名证书应加入信任库，而不是关闭校验。"
   match:
     regex:
       - >-
@@ -150,3 +154,4 @@
       - >-
         (?i)check_hostname\s*=\s*False
     exclude_regex: []
+

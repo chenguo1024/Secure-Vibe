@@ -1,4 +1,4 @@
-"""tests/test_c_cpp.py — C/C++ 多语言规则测试."""
+"""tests/test_c_cpp.py — C/C++ multi-language rule tests."""
 import sys
 from pathlib import Path
 
@@ -23,7 +23,8 @@ def ids(result):
 
 
 # ---------------------------------------------------------------------------
-# 语言归一化与继承链
+# --------------------------------------------------------------------------
+# language normalization & inheritance chains
 # ---------------------------------------------------------------------------
 
 def test_language_normalization():
@@ -43,15 +44,16 @@ def test_language_chain():
 def test_cpp_inherits_c_rules():
     v = Validator("cpp")
     rule_ids = {r.id for r in v.rules}
-    assert "C-002" in rule_ids  # C 规则继承到 C++
+    assert "C-002" in rule_ids  # C rules inherit into C++
     assert "CPP-001" in rule_ids
-    assert "GEN-001" in rule_ids  # 通用规则
-    # 黑名单也继承
+    assert "GEN-001" in rule_ids  # general rules
+    # blacklists inherit too
     assert "BLC-001" in rule_ids
 
 
 # ---------------------------------------------------------------------------
-# C 恶意用例检出
+# --------------------------------------------------------------------------
+# C malicious cases
 # ---------------------------------------------------------------------------
 
 def test_c_detects_system_and_blacklist():
@@ -59,8 +61,8 @@ def test_c_detects_system_and_blacklist():
     r = validate_c(code)
     assert not r.passed
     got = ids(r)
-    assert "C-001" in got       # system 命令执行
-    assert "BLC-002" in got     # system 以变量为参数（黑名单）
+    assert "C-001" in got       # system command execution
+    assert "BLC-002" in got     # system with a variable argument (blacklist)
 
 
 def test_c_detects_sprintf_strcpy():
@@ -102,14 +104,15 @@ def test_c_detects_insecure_tempfile():
 
 
 def test_c_detects_weak_hash_via_general():
-    # GEN-004（general）的正则引擎对 C 同样生效
+    # the GEN-004 (general) regex engine also works for C
     code = 'unsigned char *h(const char *d, unsigned long n) { return MD5(d, n, 0); }'
     r = validate_c(code)
     assert "GEN-004" in ids(r)
 
 
 # ---------------------------------------------------------------------------
-# C++ 恶意用例检出
+# --------------------------------------------------------------------------
+# C++ malicious cases
 # ---------------------------------------------------------------------------
 
 def test_cpp_detects_std_unsafe_funcs():
@@ -123,11 +126,12 @@ def test_cpp_detects_system_concat():
     r = validate_cpp(code)
     got = ids(r)
     assert "CPP-002" in got
-    assert "C-001" in got  # 继承的 C 规则同时命中
+    assert "C-001" in got  # the inherited C rule also fires
 
 
 # ---------------------------------------------------------------------------
-# 安全代码零误报
+# --------------------------------------------------------------------------
+# safe code - zero false positives
 # ---------------------------------------------------------------------------
 
 def test_c_safe_code_passes():
@@ -148,7 +152,7 @@ def test_c_safe_code_passes():
 
 
 def test_c_no_syntax_error_reported():
-    # C 代码不是 Python：不应被 Python parser 误报 syntax_error
+    # C code is not Python: must not be reported as a syntax error by the Python parser
     code = 'int main(void) { printf("hi"); return 0; }'
     r = validate_c(code)
     assert r.error == ""
@@ -169,14 +173,15 @@ def test_cpp_safe_code_passes():
 
 
 def test_c_safe_literal_system_passes():
-    # 编译期常量命令 + 字面量参数：BLC-002 不应命中
+    # compile-time constant command with a literal arg: BLC-002 must not fire
     code = 'int main(void) { system("date"); return 0; }'
     r = validate_c(code)
     assert "BLC-002" not in ids(r)
 
 
 # ---------------------------------------------------------------------------
-# 上下文构建（多语言）
+# --------------------------------------------------------------------------
+# context building (multi-language)
 # ---------------------------------------------------------------------------
 
 def test_context_for_c_includes_c_rules():
@@ -196,7 +201,7 @@ def test_context_for_cpp_includes_c_and_cpp():
 def test_prompts_cpp_uses_cpp_fewshot():
     system_prompt, _ = build_prompts("实现一个安全的文件读取工具", language="cpp")
     assert "CPP-001" in system_prompt
-    assert "```cpp" in system_prompt  # C++ 模板以 cpp 代码块注入
+    assert "```cpp" in system_prompt  # C++ template injected as a cpp code block
     assert "safe_cpp_io" in system_prompt
 
 

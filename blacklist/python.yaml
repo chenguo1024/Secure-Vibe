@@ -1,12 +1,10 @@
-# blacklist/python.yaml — Python 危险模式黑名单（与 rules 格式一致，合并加载）
-# 本文件存放"硬禁用"模式：出现即判不通过，通常无商量余地。
-# 注意：regex 正则一律用 YAML 块标量（>-）书写，避免引号转义问题。
+# blacklist/python.yaml — Python hard-banned patterns (merged with rules)
 
 - id: BL-001
   name: banned_import
   severity: high
-  message: 导入了被禁用的危险模块
-  fix_hint: 以下模式在安全生成场景中默认禁用：ctypes 任意内存操作、os.exec* 系列。确有需要请在 config.yaml 的 ignore_rules 中显式放行并说明理由。
+  message: "Banned dangerous module imported | 导入了被禁用的危险模块"
+  fix_hint: "Banned by default in secure-generation scenarios: ctypes arbitrary memory operations and the os.exec* family; allow explicitly in config.yaml ignore_rules only with justification. | 以下模式在安全生成场景中默认禁用：ctypes 任意内存操作、os.exec* 系列。确有需要请在 config.yaml 的 ignore_rules 中显式放行并说明理由。"
   match:
     regex:
       - >-
@@ -15,12 +13,13 @@
         (?<![\w.])os\.execv\w*\s*\(
     exclude_regex: []
 
+
 - id: BL-002
   name: banned_dynamic_import
   severity: medium
   cwe: CWE-96
-  message: 使用 __import__ 动态导入（可能加载恶意模块）
-  fix_hint: 使用 importlib.import_module 并对模块名做白名单校验；禁止 __import__(用户输入)。
+  message: "__import__ dynamic import (may load malicious modules) | 使用 __import__ 动态导入（可能加载恶意模块）"
+  fix_hint: "Use importlib.import_module with a whitelisted module name; never __import__(user input). | 使用 importlib.import_module 并对模块名做白名单校验；禁止 __import__(用户输入)。"
   match:
     regex:
       - >-
@@ -29,12 +28,13 @@
       - >-
         __import__\s*\(\s*["'][a-zA-Z_][\w.]*["']\s*\)
 
+
 - id: BL-003
   name: xss_unescaped_output
   severity: high
   cwe: CWE-80
-  message: 检测到向 HTML 输出未转义的用户输入（XSS 风险）
-  fix_hint: 使用模板引擎的自动转义（Jinja2 默认）；不要对含用户输入的内容调用 markupsafe.Markup/|safe。
+  message: "Unescaped user input written into HTML output (XSS) | 检测到向 HTML 输出未转义的用户输入（XSS 风险）"
+  fix_hint: "Use template auto-escaping (Jinja2 default); never wrap user content in markupsafe.Markup / |safe. | 使用模板引擎的自动转义（Jinja2 默认）；不要对含用户输入的内容调用 markupsafe.Markup/|safe。"
   match:
     regex:
       - >-
@@ -43,24 +43,26 @@
         \|\s*safe\b
     exclude_regex: []
 
+
 - id: BL-004
   name: banned_pickle_untrusted
   severity: high
   cwe: CWE-502
-  message: 全局禁用 pickle.load(s) 处理网络/用户数据
-  fix_hint: 网络数据一律用 JSON；如确需 pickle，仅限可信内部数据且通过 ignore_rules 显式放行。
+  message: "pickle.load(s) on network/user data is globally banned | 全局禁用 pickle.load(s) 处理网络/用户数据"
+  fix_hint: "Use JSON for all network data; if pickle is truly required, allow it explicitly via ignore_rules for trusted internal data only. | 网络数据一律用 JSON；如确需 pickle，仅限可信内部数据且通过 ignore_rules 显式放行。"
   match:
     regex:
       - >-
         (?i)pickle\.loads?\s*\([^)]*(request|socket|recv|input|urlopen|response)
     exclude_regex: []
 
+
 - id: BL-005
   name: dynamic_builtin_access
   severity: high
   cwe: CWE-95
-  message: 通过 getattr/builtins 动态访问 eval/exec/open/compile 等危险内建（绕过静态检测）
-  fix_hint: 禁止动态取用危险内建函数；这是常见的静态检测绕过手段，改用安全 API（json.loads/ast.literal_eval）并移除该调用。
+  message: "Dynamic access to dangerous builtins (eval/exec/open/compile) via getattr/builtins - bypasses static detection | 通过 getattr/builtins 动态访问 eval/exec/open/compile 等危险内建（绕过静态检测）"
+  fix_hint: "Never dynamically reach dangerous builtins; this is a classic static-analysis bypass. Use safe APIs (json.loads/ast.literal_eval) and remove the call. | 禁止动态取用危险内建函数；这是常见的静态检测绕过手段，改用安全 API（json.loads/ast.literal_eval）并移除该调用。"
   match:
     regex:
       - >-
@@ -69,24 +71,26 @@
         (?i)_*builtins?_*\s*\[["'](eval|exec|open|compile)["']\]
     exclude_regex: []
 
+
 - id: BL-006
   name: ml_deserialization_from_untrusted
   severity: high
   cwe: CWE-502
-  message: 从网络/用户输入路径加载 ML 模型文件（反序列化 RCE，无商量余地）
-  fix_hint: 禁止 torch.load/joblib.load/read_pickle 加载外部来源文件；模型文件只放可信仓库，加载前核对 SHA256。
+  message: "ML model files loaded from network/user-supplied paths (deserialization RCE - no exception) | 从网络/用户输入路径加载 ML 模型文件（反序列化 RCE，无商量余地）"
+  fix_hint: "Never torch.load/joblib.load/read_pickle on external sources; keep models in a trusted repository and verify SHA256 before loading. | 禁止 torch.load/joblib.load/read_pickle 加载外部来源文件；模型文件只放可信仓库，加载前核对 SHA256。"
   match:
     regex:
       - >-
         (?i)(torch\.load|joblib\.load|pandas?\.read_pickle|dill\.loads?)\s*\([^)]*(request|urlopen|download|recv|fetch|response|socket|url)
     exclude_regex: []
 
+
 - id: BL-007
   name: ssrf_to_metadata
   severity: high
   cwe: CWE-918
-  message: 请求指向云元数据端点（SSRF 直击云凭据，无商量余地）
-  fix_hint: 禁止代码中出现向 169.254.169.254/metadata 等地址发起的请求；外部目标必须 DNS 白名单 + 私网地址过滤。
+  message: "Request targets a cloud metadata endpoint (SSRF directly hitting cloud credentials - no exception) | 请求指向云元数据端点（SSRF 直击云凭据，无商量余地）"
+  fix_hint: "Never request 169.254.169.254/metadata addresses; external targets must go through a DNS whitelist + private-range filtering. | 禁止代码中出现向 169.254.169.254/metadata 等地址发起的请求；外部目标必须 DNS 白名单 + 私网地址过滤。"
   match:
     regex:
       - >-
@@ -94,3 +98,4 @@
     exclude_regex:
       - >-
         (?i)["']#?\s*(注释|说明|example|安全说明)
+

@@ -1,24 +1,24 @@
-# rules/dockerfile.yaml — Dockerfile 安全规则（正则引擎；docker/containerfile 别名归一化）
-# 注意：含冒号的字符串一律加引号，避免 YAML 解析错误。
+# rules/dockerfile.yaml — Dockerfile security rules (regex engine)
 
 - id: DOCK-001
   name: docker_run_as_root
   severity: high
   cwe: CWE-250
-  message: 容器以 root 用户运行（未降权，容器逃逸影响最大）
-  fix_hint: 末尾加 USER 非 root 用户（先 useradd）；至少声明 USER 10001 等非 0 UID。
+  message: "Container runs as root (no privilege drop - maximizes damage on escape) | 容器以 root 用户运行（未降权，容器逃逸影响最大）"
+  fix_hint: "Add USER with a non-root account (create it with useradd first) or at least a non-0 UID like 10001. | 末尾加 USER 非 root 用户（先 useradd）；至少声明 USER 10001 等非 0 UID。"
   match:
     regex:
       - >-
         (?i)^\s*USER\s+(root|0)\s*$
     exclude_regex: []
 
+
 - id: DOCK-002
   name: docker_secret_in_image
   severity: high
   cwe: CWE-798
-  message: 把密钥/password 写进镜像层（ENV/ARG 硬编码密钥）
-  fix_hint: 密钥用 BuildKit secret 挂载（--secret）或运行时注入环境/Secret 管理；禁止 ENV PASSWORD=... ARG TOKEN=...。
+  message: "Secrets baked into image layers (ENV/ARG with hardcoded secrets) | 把密钥/password 写进镜像层（ENV/ARG 硬编码密钥）"
+  fix_hint: "Use BuildKit secrets (--secret) or inject at runtime via environment/secret managers; never ENV PASSWORD=... / ARG TOKEN=... | 密钥用 BuildKit secret 挂载（--secret）或运行时注入环境/Secret 管理；禁止 ENV PASSWORD=... ARG TOKEN=...。"
   match:
     regex:
       - >-
@@ -27,38 +27,42 @@
       - >-
         \$\{|\$\w+["']?$|<secret>|placeholder
 
+
 - id: DOCK-003
   name: docker_curl_pipe_sh
   severity: high
   cwe: CWE-78
-  message: 构建时下载内容直接管道给 shell 执行
-  fix_hint: 改为下载→校验 checksum→执行；安装包写死版本号，来源只用官方可信地址。
+  message: "Build step pipes downloaded content into a shell | 构建时下载内容直接管道给 shell 执行"
+  fix_hint: "Switch to download -> checksum verification -> execute; pin package versions and use official sources only. | 改为下载→校验 checksum→执行；安装包写死版本号，来源只用官方可信地址。"
   match:
     regex:
       - >-
         (?i)(curl|wget)\b[^\n]*\|\s*(ba|z|k)?sh\b
     exclude_regex: []
 
+
 - id: DOCK-004
   name: docker_remote_add
   severity: medium
   cwe: CWE-494
-  message: ADD 使用远程 URL（引用外部不确定内容）
-  fix_hint: 用 curl 显式下载+校验；ADD 仅用于本地 tar/目录。
+  message: "ADD with a remote URL (external content without integrity verification) | ADD 使用远程 URL（引用外部不确定内容）"
+  fix_hint: "Download explicitly with curl plus checksum verification; use ADD only for local tarballs/directories. | 用 curl 显式下载+校验；ADD 仅用于本地 tar/目录。"
   match:
     regex:
       - >-
         (?i)^\s*ADD\s+https?://
     exclude_regex: []
 
+
 - id: DOCK-005
   name: docker_latest_tag
   severity: low
   cwe: CWE-1104
-  message: 基础镜像使用 latest 标签（版本漂移/供应链风险）
-  fix_hint: 基础镜像写死版本/摘要（如 FROM alpine:3.20 或 FROM ...@sha256:...）。
+  message: "Base image uses the latest tag (version drift / supply-chain risk) | 基础镜像使用 latest 标签（版本漂移/供应链风险）"
+  fix_hint: "Pin the base image to a version or digest: FROM alpine:3.20 or FROM image@sha256:... | 基础镜像写死版本/摘要（如 FROM alpine:3.20 或 FROM ...@sha256:...）。"
   match:
     regex:
       - >-
         (?i)^\s*FROM\s+\S+:(latest)\s*$
     exclude_regex: []
+

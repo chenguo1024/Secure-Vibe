@@ -1,17 +1,18 @@
-"""llm_backend.py — LLM 可插拔后端抽象层.
+"""llm_backend.py — Pluggable LLM backend abstraction layer.
 
-primary 模式（Skill 安装在 Agent 内）:
-  session  - 跟随 Agent 自身的 LLM。生成由 Agent 当前所用模型完成，
-             Skill 只提供确定性工具（上下文构建/校验/日志），零 API 依赖。
-             通过 cli.py（Agent shell 调用）或 session_fn 注入（Python 调用）两种方式接入。
+primary mode (skill installed inside an agent):
+  session  - follows the agent's own LLM. Generation is done by the model the agent uses;
+             the skill only provides deterministic tools (context building / validation / logging),
+             with zero API dependencies. Wired either via cli.py (agent shell calls) or via
+             session_fn injection (Python calls).
 
-standalone 模式（独立脚本运行时）:
-  openai   - OpenAI API（环境变量 OPENAI_API_KEY）
-  claude   - Anthropic API（环境变量 ANTHROPIC_API_KEY）
-  ollama   - 本地 Ollama（base_url 默认 http://localhost:11434）
-  mock     - 测试用，不联网，返回预置代码（可注入脚本控制其行为）
+standalone mode (running as a standalone script):
+  openai   - OpenAI API (environment variable OPENAI_API_KEY)
+  claude   - Anthropic API (environment variable ANTHROPIC_API_KEY)
+  ollama   - local Ollama (base_url defaults to http://localhost:11434)
+  mock     - for testing: offline, returns preset code (script injection controls its behavior)
 
-统一接口：backend.generate(system_prompt, user_prompt) -> str
+Unified interface: backend.generate(system_prompt, user_prompt) -> str
 """
 from __future__ import annotations
 
@@ -31,21 +32,21 @@ class LLMConfig:
 
 
 class LLMBackend(Protocol):
-    """所有后端实现的统一协议。"""
+    """Unified protocol for all backend implementations."""
 
     def generate(self, system_prompt: str, user_prompt: str) -> str: ...
 
 
 class SessionLLM:
-    """跟随调用方的 LLM：由 Agent 环境注入生成函数。
+    """Follows the caller's LLM: the generation function is injected by the agent environment.
 
-    用法（在 Agent 工具内使用时）:
+    Usage (inside agent tooling):
         backend = SessionLLM(generate_fn=agent_current_llm_generate)
     """
 
     def __init__(self, generate_fn: Callable[[str, str], str]):
         if not callable(generate_fn):
-            raise ValueError("SessionLLM 需要注入 callable: generate_fn(system, user) -> str")
+            raise ValueError("SessionLLM needs an injected callable: generate_fn(system, user) -> str")
         self._fn = generate_fn
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
@@ -55,12 +56,12 @@ class SessionLLM:
 class OpenAIBackend:
     def __init__(self, cfg: LLMConfig):
         try:
-            from openai import OpenAI  # 延迟导入，未安装时不影响其他后端
+            from openai import OpenAI  # lazy import; missing package must not affect other backends
         except ImportError as exc:
-            raise ImportError("使用 openai 后端请先: pip install openai") from exc
+            raise ImportError("openai backend requires: pip install openai") from exc
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("缺少环境变量 OPENAI_API_KEY")
+            raise ValueError("Missing environment variable OPENAI_API_KEY")
         kwargs: dict = {"api_key": api_key, "timeout": cfg.timeout}
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
@@ -86,10 +87,10 @@ class ClaudeBackend:
         try:
             import anthropic
         except ImportError as exc:
-            raise ImportError("使用 claude 后端请先: pip install anthropic") from exc
+            raise ImportError("claude backend requires: pip install anthropic") from exc
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise ValueError("缺少环境变量 ANTHROPIC_API_KEY")
+            raise ValueError("Missing environment variable ANTHROPIC_API_KEY")
         self.client = anthropic.Anthropic(api_key=api_key, timeout=cfg.timeout)
         self.model = cfg.model or "claude-sonnet-4-20250514"
         self.cfg = cfg
@@ -110,7 +111,7 @@ class OllamaBackend:
         try:
             import httpx
         except ImportError as exc:
-            raise ImportError("使用 ollama 后端请先: pip install httpx") from exc
+            raise ImportError("ollama backend requires: pip install httpx") from exc
         self.base_url = cfg.base_url or "http://localhost:11434"
         self.model = cfg.model or "qwen2.5-coder:7b"
         self.cfg = cfg
@@ -135,10 +136,11 @@ class OllamaBackend:
 
 
 class MockBackend:
-    """测试用 Mock：不联网。
+    """Testing mock: fully offline.
 
-    可注入 responses 列表（按调用次序返回）或脚本函数，
-    默认返回一段带注入漏洞的代码，用于演示校验器触发修复循环。
+    Accepts an injectable responses list (returned in call order) or a script function;
+    by default returns a snippet containing injection flaws, used to demonstrate the
+    validator triggering the repair loop.
     """
 
     DEFAULT_RESPONSE = '''\
@@ -183,21 +185,21 @@ _BACKENDS = {
 
 def create_backend(cfg: Optional[LLMConfig] = None,
                    session_fn: Optional[Callable[[str, str], str]] = None) -> LLMBackend:
-    """工厂函数：按配置创建后端实例。
+    """Factory: create a backend instance from config.
 
-    - cfg.backend == "session" 时需要注入 session_fn（Agent 当前 LLM）。
-    - cfg 为 None 时默认使用 MockBackend（无网络依赖，开箱即用）。
+    - cfg.backend == "session" requires injecting session_fn (the agent's current LLM).
+    - cfg None defaults to MockBackend (no network dependency, works out of the box).
     """
     if cfg is None:
         return MockBackend()
     name = (cfg.backend or "mock").lower()
     if name == "session":
         if session_fn is None:
-            raise ValueError("backend=session 时必须通过 session_fn 注入当前 LLM 的生成函数")
+            raise ValueError("backend=session requires injecting the current LLM generation function via session_fn")
         return SessionLLM(session_fn)
     if name == "mock":
-        return MockBackend()  # Mock 不接受 LLMConfig，直接返回默认实例
+        return MockBackend()  # Mock takes no LLMConfig; return the default instance
     cls = _BACKENDS.get(name)
     if cls is None:
-        raise ValueError(f"未知后端: {name}，可选: {list(_BACKENDS)}")
+        raise ValueError(f"unknown backend: {name}, available: {list(_BACKENDS)}")
     return cls(cfg)
