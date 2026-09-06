@@ -1,4 +1,5 @@
 """tests/test_taint.py — lightweight taint analysis tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

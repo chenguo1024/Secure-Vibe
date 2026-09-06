@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# secure-vibe: ignore-file - installer legitimately uses rm -rf on its own target dir
 # install.sh — 把 Secure-Vibe 安装到用户的 Agent 技能目录（Linux/macOS）
 # 用法:
 #   ./install.sh                    # 默认 opencode
@@ -61,6 +62,16 @@ done
 
 if [ -n "$PY_CMD" ]; then
     echo "  使用 Python: $PY_CMD"
+    # 把选定的解释器绝对路径写入 config.yaml（cli.py 启动时检测解释器错位）
+    PY_EXE=$("$PY_CMD" -c 'import sys; print(sys.executable)' 2>/dev/null || true)
+    if [ -n "$PY_EXE" ] && [ -f "$TARGET/config.yaml" ]; then
+        if grep -q '^interpreter:' "$TARGET/config.yaml"; then
+            sed -i.bak "s|^interpreter:.*|interpreter: \"$PY_EXE\"|" "$TARGET/config.yaml" && rm -f "$TARGET/config.yaml.bak"
+        else
+            printf '\n# Chosen by the install script; cli.py warns at startup when running under a different interpreter\ninterpreter: "%s"\n' "$PY_EXE" >> "$TARGET/config.yaml"
+        fi
+        echo "  解释器已写入 config.yaml: $PY_EXE"
+    fi
     if "$PY_CMD" "$TARGET/cli.py" selftest; then
         echo ""
         echo "安装完成。重启 Agent 后生效。技能名: secure-vibe"

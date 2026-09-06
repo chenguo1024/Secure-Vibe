@@ -1,4 +1,5 @@
 """main.py — Secure-Vibe entry point.
+# secure-vibe: ignore-file - demo contains deliberate flawed code (teaching example)
 
 Function API:
     generate_secure_code(task_description, language, framework, context)

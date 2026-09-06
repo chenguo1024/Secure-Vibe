@@ -116,6 +116,7 @@ def evaluate(samples, language: str = "python") -> dict:
     insecure_n = sum(1 for s in samples if s["insecure"])
     safe_n = len(samples) - insecure_n
     return {
+        "source": "SecurityEval (authoritative benchmark)",
         "total_samples": len(samples),
         "insecure_samples": insecure_n,
         "safe_samples": safe_n,
@@ -123,20 +124,21 @@ def evaluate(samples, language: str = "python") -> dict:
         "false_positive_rate": round(false_pos / safe_n, 4) if safe_n else None,
         "avg_latency_ms": round(total_ms / len(samples), 3) if samples else 0,
         "missed_by_cwe": dict(sorted(missed_cwe.items(), key=lambda kv: -kv[1])),
-    } 
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Secure-Vibe pro-level evaluation (SecurityEval)")
-    ap = argparse.ArgumentParser(description="Secure-Vibe pro-level evaluation (SecurityEval)")
     ap.add_argument("--path", default="", help="SecurityEval dataset path (defaults to config.yaml)")
     ap.add_argument("--local", action="store_true", help="offline baseline on built-in samples (no external dataset)")
+    ap.add_argument("--corpus", default="", help="alternate dataset file/dir (jsonl or python corpus dir)")
     args = ap.parse_args()
 
     if args.local:
+        sys.path.insert(0, str(PROJECT_ROOT / "tools"))
         import benchmark
         report = benchmark.run_benchmark(limit=0)
-        report["benchmark"] = "local_builtin"
+        report["source"] = "local builtin benchmark (自测小样本, not an authoritative external benchmark)"
         out = PROJECT_ROOT / "logs" / "evaluation_report.json"
         out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")

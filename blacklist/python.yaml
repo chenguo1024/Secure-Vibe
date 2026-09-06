@@ -61,6 +61,8 @@
   name: dynamic_builtin_access
   severity: high
   cwe: CWE-95
+  # literal_sensitive: the dangerous name appears as a string literal
+  literal_sensitive: true
   message: "Dynamic access to dangerous builtins (eval/exec/open/compile) via getattr/builtins - bypasses static detection | 通过 getattr/builtins 动态访问 eval/exec/open/compile 等危险内建（绕过静态检测）"
   fix_hint: "Never dynamically reach dangerous builtins; this is a classic static-analysis bypass. Use safe APIs (json.loads/ast.literal_eval) and remove the call. | 禁止动态取用危险内建函数；这是常见的静态检测绕过手段，改用安全 API（json.loads/ast.literal_eval）并移除该调用。"
   match:
@@ -89,6 +91,8 @@
   name: ssrf_to_metadata
   severity: high
   cwe: CWE-918
+  # literal_sensitive: the metadata IP appears inside a URL string
+  literal_sensitive: true
   message: "Request targets a cloud metadata endpoint (SSRF directly hitting cloud credentials - no exception) | 请求指向云元数据端点（SSRF 直击云凭据，无商量余地）"
   fix_hint: "Never request 169.254.169.254/metadata addresses; external targets must go through a DNS whitelist + private-range filtering. | 禁止代码中出现向 169.254.169.254/metadata 等地址发起的请求；外部目标必须 DNS 白名单 + 私网地址过滤。"
   match:

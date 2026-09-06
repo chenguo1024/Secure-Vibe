@@ -1,0 +1,41 @@
+#!/bin/sh
+# Secure-Vibe pre-commit hook: validate staged code files before every commit.
+# Installed automatically by install.sh / install.ps1 (or `python cli.py precommit --install-hook`).
+# Skips cleanly when no usable interpreter is found (fresh clone without pyyaml) —
+# the CI gate still runs the same checks on push.
+
+# resolve the interpreter: prefer config.yaml's recorded interpreter, then PATH
+# (only interpreters that can import yaml are accepted; otherwise skip cleanly)
+CFG="$(dirname "$0")/../../config.yaml"
+SKILL_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+
+INTERP=""
+if [ -f "$CFG" ] && grep -q '^interpreter:' "$CFG" 2>/dev/null; then
+    RECORDED=$(grep '^interpreter:' "$CFG" | head -1 | sed 's/^interpreter:[[:space:]]*//; s/^["'\'']//; s/["'\''][[:space:]]*$//')
+    if [ -n "$RECORDED" ] && [ -x "$RECORDED" ] && "$RECORDED" -c "import yaml" 2>/dev/null; then
+        INTERP="$RECORDED"
+    fi
+fi
+if [ -z "$INTERP" ]; then
+    for cand in python3 python py; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            if [ "$cand" = "py" ]; then
+                PYEXE="py -3"
+            else
+                PYEXE="$cand"
+            fi
+            if $PYEXE -c "import yaml" 2>/dev/null; then
+                INTERP="$PYEXE"
+                break
+            fi
+        fi
+    done
+fi
+if [ -z "$INTERP" ]; then
+    echo "[secure-vibe] no interpreter with pyyaml found; skipping the pre-commit check (CI still gates on push)" >&2
+    echo "[secure-vibe] to enable it: pip install pyyaml, then python cli.py precommit --install-hook" >&2
+    exit 0
+fi
+
+$INTERP "$SKILL_DIR/cli.py" precommit --fail-on high
+exit $?

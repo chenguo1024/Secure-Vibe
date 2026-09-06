@@ -1,4 +1,5 @@
 """tests/test_context_builder.py — Security context builder tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

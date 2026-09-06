@@ -1,4 +1,5 @@
 """tests/test_ci.py — GitHub Actions workflow rule tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

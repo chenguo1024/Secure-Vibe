@@ -263,6 +263,8 @@
   name: nosql_operator_injection
   severity: high
   cwe: CWE-943
+  # literal_sensitive: $where appears as a string dict key
+  literal_sensitive: true
   message: "Mongo query may allow operator injection from user input (NoSQL injection) | MongoDB 查询可能受用户输入运算符注入（NoSQL 注入）"
   fix_hint: "Coerce user input to typed values (str()); never deep-merge raw JSON into query objects; bind parameters manually. | 把用户输入强制转为字符串/类型化（str()），禁止递归合并 raw JSON 到查询对象；参数化查询（mongo 无原生绑定，需手动类型约束）。"
   match:
@@ -299,6 +301,8 @@
   name: jwt_algorithm_none_or_confusion
   severity: high
   cwe: CWE-347
+  # literal_sensitive: 'none' appears as a string dict value
+  literal_sensitive: true
   message: "Suspicious JWT algorithm (alg=none or missing algorithm whitelist - algorithm confusion) | JWT 算法可疑（alg=none 或缺少算法白名单，算法混淆风险）"
   fix_hint: "Decode must pass algorithms=[...] explicitly and exclude none; fix a single algorithm constant (e.g. HS256); never trust the header's alg. | 解码必须显式 algorithms=[...] 且不含 none；编码/解码使用固定算法常量（如 HS256），禁止信任 header 里的 alg。"
   match:

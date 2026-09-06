@@ -24,6 +24,7 @@ except ImportError as exc:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+from core.strip import strip_code  # noqa: E402
 from core.taint import SINK_FIX_HINTS, SINK_MESSAGES, TAINT_CWE, find_tainted_sinks  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -169,6 +170,8 @@ class Rule:
         regex: [...]         #   regex pattern list
         regex_flags: "i"     #   regex flags (i=ignore case)
       exclude_regex: [...]   #   exclusion patterns (matches inside comments/docstrings do not count)
+      literal_sensitive: bool  # rule needs string CONTENTS (e.g. secret charsets);
+                               # matched against the raw line instead of the stripped code shape
     """
 
     def __init__(self, data: dict[str, Any]):
@@ -179,6 +182,7 @@ class Rule:
         self.fix_hint: str = data.get("fix_hint", "")
         self.cwe: str = data.get("cwe", "")
         self.template: str = data.get("template", "")
+        self.literal_sensitive: bool = bool(data.get("literal_sensitive", False))
         match = data.get("match", {})
         self.ast_calls: list[str] = list(match.get("ast_calls", []))
         self.ast_kwargs: dict[str, Any] = dict(match.get("ast_kwargs", {}))
@@ -265,10 +269,14 @@ class Validator:
                 if rule.ast_calls or rule.ast_kwargs:
                     violations.extend(self._check_ast(tree, code, rule))
 
-        # Engine 2: regex blacklist (runs even when AST fails; tolerates code fragments)
+        # Engine 2: regex blacklist (runs even when AST fails; tolerates code fragments).
+        # Comments and string contents are lexically stripped first (python/js) so
+        # docstring/comment examples stop firing; literal-sensitive rules (secret
+        # charsets) match the raw line instead.
+        stripped = strip_code(code, self.language)
         for rule in self.rules:
             if rule.patterns:
-                violations.extend(self._check_regex(code, rule))
+                violations.extend(self._check_regex(code, rule, stripped))
 
         # Engine 3: lightweight taint analysis (Python only, when parseable) — confirms user input reaching dangerous sinks
         if self.taint_analysis and tree is not None:
@@ -353,25 +361,37 @@ class Validator:
 
     # -- regex engine --------------------------------------------------------
 
-    def _check_regex(self, code: str, rule: Rule) -> list[Violation]:
+    def _check_regex(self, code: str, rule: Rule, stripped: Optional[str] = None) -> list[Violation]:
+        # stripped: lexically stripped code shape (python/js only, None otherwise).
+        # Rules that need string contents (literal_sensitive) match the raw code.
+        use_strip = stripped is not None and not rule.literal_sensitive
+        src_lines = (stripped if use_strip else code).splitlines()
+        raw_lines = code.splitlines()
         found: list[Violation] = []
-        for lineno, line in enumerate(code.splitlines(), 1):
-            stripped = line.strip()
-            # skip pure comment lines
-            if stripped.startswith("#"):
+        for lineno, text in enumerate(src_lines, 1):
+            stripped_line = text.strip()
+            raw_line = raw_lines[lineno - 1] if 0 < lineno <= len(raw_lines) else text
+            # explicit line-level suppression: `# secure-vibe: ignore` on the raw line
+            if "secure-vibe: ignore" in raw_line and "ignore-file" not in raw_line:
                 continue
-            if any(p.search(stripped) for p in rule.exclude):
+            # skip pure comment lines (raw path only; stripped comments are already blanked)
+            if not use_strip and (
+                stripped_line.startswith(("#", "//", "/*", "*"))
+            ):
+                continue
+            if any(p.search(stripped_line) for p in rule.exclude):
                 continue
             for pattern in rule.patterns:
-                m = pattern.search(stripped)
+                m = pattern.search(stripped_line)
                 if m:
+                    snippet = raw_line.strip()[:120]
                     found.append(
                         Violation(
                             rule_id=rule.id,
                             rule_name=rule.name,
                             line=lineno,
                             column=m.start(),
-                            snippet=stripped[:120],
+                            snippet=snippet,
                             message=rule.message,
                             severity=rule.severity,
                             fix_hint=rule.fix_hint,

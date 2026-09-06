@@ -1,4 +1,5 @@
 """tests/test_go_sh.py — Go and Shell language rule tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

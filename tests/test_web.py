@@ -1,4 +1,5 @@
 """tests/test_web.py — PHP/HTML/JS web-development rule tests.
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 
 Note: malicious sample strings are assembled at runtime (keeps full attack payloads off disk, avoiding AV quarantine).
 """

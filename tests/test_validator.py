@@ -1,4 +1,5 @@
 """tests/test_validator.py — validator test suite.
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 
 Each case covers positive (must detect) + negative (safe code must not false-positive) sides.
 Run: python -m pytest tests/ -q

@@ -1,6 +1,11 @@
 # Secure-Vibe global configuration
 # Every field can be overridden via the environment variable SECURE_VIBE_<UPPERCASED_FIELD>
 
+# Interpreter chosen by the install script (absolute path). cli.py warns at startup
+# when running under a different interpreter (usually means pyyaml/pip divergence).
+# Leave empty for no startup check.
+interpreter: 'C:\Users\12190\AppData\Local\Programs\Python\Python314\python.exe'
+
 # LLM backend settings
 llm:
   # available backend values:

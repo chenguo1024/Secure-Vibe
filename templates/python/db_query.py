@@ -29,5 +29,5 @@ def list_users(conn: sqlite3.Connection, sort_by: str = "id", limit: int = 50) -
         raise ValueError(f"sort_by must be one of {sorted(_ALLOWED_SORT_COLUMNS)}")
     limit = max(1, min(int(limit), 100))  # 数值边界约束
     # sort_by 已过白名单，limit 已转 int，安全
-    cur = conn.execute(f"SELECT id, name FROM users ORDER BY {sort_by} LIMIT ?", (limit,))
+    cur = conn.execute(f"SELECT id, name FROM users ORDER BY {sort_by} LIMIT ?", (limit,))  # secure-vibe: ignore (whitelisted column name, documented pattern)
     return [{"id": r[0], "name": r[1]} for r in cur.fetchall()]

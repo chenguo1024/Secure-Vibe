@@ -11,19 +11,27 @@ Generation is performed by the agent's own LLM (session mode); this tool provide
 Subcommands:
     context    build the security context (rules/blacklist/template lists)
     validate   validate a code file (--file) or code string (--code)
+    sast       scan a whole directory (builtin rules + semgrep + dependency scanners)
+    precommit  validate the staged files (git pre-commit hook entry point)
     log        record one complete generation process
     missed     report a new attack pattern that was missed/bypassed
     cwe        query CWE reference knowledge (rule-mining material)
-    selftest   self-test (validator + rule loading + log writability)
+    selftest   self-test (validator + rule loading + log writability + sample suite)
 
 Contract:
     - validate: exit 0=pass  1=violations found  2=error
+    - sast/precommit: exit 0=clean  1=findings at the fail-on severity  2=error
     - every JSON output goes to stdout (ensure_ascii=False, UTF-8)
 """
 from __future__ import annotations
 
 import argparse
+import glob
 import json
+import os
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -34,13 +42,94 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
+
+def _candidate_interpreters() -> list[str]:
+    """Probe this machine for Python interpreters (pure stdlib; no yaml import needed)."""
+    cands: list[str] = []
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA", "")
+        for pat in (
+            str(Path(local) / "Programs" / "Python" / "Python3*" / "python.exe"),
+            r"C:\Python3*\python.exe",
+            str(Path(local) / "Programs" / "Python" / "Launcher" / "py.exe"),
+            r"C:\Program Files\Python3*\python.exe",
+            str(Path(os.environ.get("USERPROFILE", "")) / "Anaconda3" / "python.exe"),
+            str(Path(os.environ.get("USERPROFILE", "")) / "miniconda3" / "python.exe"),
+        ):
+            cands.extend(str(p) for p in glob.glob(pat))
+        try:
+            r = subprocess.run(["py", "-0p"], capture_output=True, text=True, timeout=10)
+            for line in (r.stdout or "").splitlines():
+                m = re.search(r"([A-Za-z]:\\[^\s*]+python\.exe)", line)
+                if m:
+                    cands.append(m.group(1))
+        except Exception:
+            pass
+    else:
+        for name in ("python3", "python"):
+            p = shutil.which(name)
+            if p:
+                cands.append(p)
+    seen: set[str] = set()
+    out = []
+    for c in cands:
+        c = str(Path(c).resolve()) if Path(c).exists() else c
+        if c.lower() not in seen and Path(c).exists():
+            seen.add(c.lower())
+            out.append(c)
+    return out[:6]
+
+
+def _has_yaml(interpreter: str) -> bool:
+    try:
+        r = subprocess.run(
+            [interpreter, "-c", "import yaml"],
+            capture_output=True, timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _bootstrap_failure(exc: Exception) -> None:
+    """Startup self-check: print machine-specific fix commands instead of a bare traceback."""
+    fixes: list[dict] = []
+    me = sys.executable or "python"
+    fixes.append({
+        "command": f'"{me}" -m pip install pyyaml',
+        "note": "install pyyaml into the current interpreter",
+    })
+    for cand in _candidate_interpreters():
+        if Path(cand).resolve() == Path(me).resolve() if me else False:
+            continue
+        has = _has_yaml(cand)
+        fixes.append({
+            "command": f'"{cand}" -m pip install pyyaml' if not has else f'"{cand}" cli.py selftest',
+            "note": ("this interpreter already has pyyaml - run the toolchain with it"
+                     if has else "alternative interpreter on this machine"),
+        })
+    fixes.append({
+        "command": "python -m pip install pyyaml -i https://pypi.tuna.tsinghua.edu.cn/simple",
+        "note": "if pypi.org is unreachable from your network, use the TUNA mirror",
+    })
+    print(json.dumps({
+        "ok": False,
+        "error": f"missing dependency: {exc}",
+        "problem": "Secure-Vibe needs pyyaml (its only dependency); the current interpreter does not have it",
+        "current_interpreter": me,
+        "fixes": fixes,
+        "after_install": "run: python cli.py selftest  to verify",
+    }, ensure_ascii=False, indent=1))
+
+
 try:
     import yaml
     from core.context_builder import build_prompts, build_repair_prompt
     from core.logger import SecureLogger, compute_manual_diff
     from core.validator import Validator
 except ImportError as exc:
-    print(json.dumps({"ok": False, "error": f"missing dependency: {exc}"}, ensure_ascii=False))
+    _bootstrap_failure(exc)
     sys.exit(2)
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -147,6 +236,167 @@ def cmd_validate(args) -> int:
     if result.error:
         return 2
     return 0 if result.passed else 1
+
+
+# ---------------------------------------------------------------------------
+# subcommand: sast
+# ---------------------------------------------------------------------------
+
+def cmd_sast(args) -> int:
+    """Scan a whole directory: builtin rules (always) + semgrep + dependency scanners (best-effort)."""
+    from core.sast import run_sast
+
+    target = Path(args.path)
+    if not target.is_dir():
+        print(json.dumps({"ok": False, "error": f"directory not found: {target}"}, ensure_ascii=False))
+        return 2
+
+    result = run_sast(target, run_semgrep_flag=not args.no_semgrep,
+                      run_deps_flag=not args.no_deps)
+
+    fail_sev = {"high": {"high"}, "any": {"high", "medium", "low"}, "never": set()}[args.fail_on]
+    blocking = [f for f in result.findings if f.severity in fail_sev]
+    out = {
+        "ok": True,
+        "passed": not blocking,
+        "path": str(target),
+        "files_scanned": result.files_scanned,
+        "elapsed_ms": round(result.elapsed_ms, 1),
+        "engines": result.engines,
+        "summary": result.summary(),
+        "fail_on": args.fail_on,
+        "findings": [f.to_dict() for f in (blocking if not args.full else result.findings)],
+        "total_findings": len(result.findings),
+    }
+    if not out["passed"]:
+        out["gate_instruction"] = (
+            f"{len(blocking)} finding(s) at fail-on={args.fail_on} severity. "
+            f"Fix per fix_hint (semgrep findings include suggested fixes), re-run sast until passed."
+        )
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+    return 0 if out["passed"] else 1
+
+
+# ---------------------------------------------------------------------------
+# subcommand: precommit
+# ---------------------------------------------------------------------------
+
+def cmd_precommit(args) -> int:
+    """Validate git staged (or all tracked with --all) files. Pre-commit hook entry point.
+
+    Reads the interpreter from config.yaml when present so the hook runs with the
+    install script's chosen Python even when PATH differs.
+    """
+    if getattr(args, "install_hook", False):
+        return _install_hook()
+    from core.sast import _detect_lang, _file_ignored
+    from core.validator import Validator
+
+    staged = _staged_or_tracked_files(all_files=args.all)
+    if staged is None:
+        print(json.dumps({"ok": False, "error": "not a git repository (no .git here)"}, ensure_ascii=False))
+        return 2
+
+    targets = []
+    for rel in staged:
+        p = Path(rel)
+        if not p.is_file():
+            continue
+        lang = _detect_lang(p)
+        if lang:
+            targets.append((p, lang))
+
+    if not targets:
+        print(json.dumps({"ok": True, "passed": True, "checked": 0,
+                          "note": "no staged code files to validate"}, ensure_ascii=False))
+        return 0
+
+    validators: dict[str, Validator] = {}
+    findings = []
+    for p, lang in targets:
+        try:
+            code = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _file_ignored(code):
+            continue   # deliberate test fixture / demo payload
+        v = validators.get(lang)
+        if v is None:
+            v = Validator(language=lang, taint_analysis=True)
+            validators[lang] = v
+        result = v.validate(code)
+        for viol in result.violations:
+            findings.append({
+                "file": str(p), "line": viol.line, "rule_id": viol.rule_id,
+                "severity": viol.severity, "message": viol.message,
+                "fix_hint": viol.fix_hint, "snippet": viol.snippet,
+            })
+
+    fail_sev = {"high": {"high"}, "any": {"high", "medium", "low"}, "never": set()}[args.fail_on]
+    blocking = [f for f in findings if f["severity"] in fail_sev]
+    out = {
+        "ok": True,
+        "passed": not blocking,
+        "checked": len(targets),
+        "fail_on": args.fail_on,
+        "findings": blocking if not args.full else findings,
+        "total_findings": len(findings),
+    }
+    if blocking:
+        out["unblock_hint"] = (
+            "Fix the findings, or commit with --no-verify to skip the hook "
+            "(the CI gate still runs the same checks on push)."
+        )
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+    return 0 if out["passed"] else 1
+
+
+def _staged_or_tracked_files(all_files: bool = False) -> Optional[list[str]]:
+    """Staged file list via git diff --cached; all tracked files with --all. None when not a git repo."""
+    cmd = ["git", "diff", "--cached", "--name-only"] if not all_files else \
+          ["git", "ls-files"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            return None
+        return [ln for ln in r.stdout.splitlines() if ln.strip()]
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _install_hook() -> int:
+    """Install hooks/pre-commit into .git/hooks (idempotent; preserves an existing hook)."""
+    git_dir = subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True,
+                             text=True, timeout=15)
+    if git_dir.returncode != 0:
+        print(json.dumps({"ok": False, "error": "not a git repository"}, ensure_ascii=False))
+        return 2
+    hooks_dir = Path(git_dir.stdout.strip()) / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    target = hooks_dir / "pre-commit"
+    src = PROJECT_ROOT / "hooks" / "pre-commit"
+    if target.exists():
+        existing = target.read_text(encoding="utf-8", errors="replace")
+        if "secure-vibe" in existing or "cli.py" in existing and "precommit" in existing:
+            pass   # ours: refresh
+        else:
+            print(json.dumps({
+                "ok": False,
+                "error": f"a different pre-commit hook already exists: {target}",
+                "note": "merge it manually or wire secure-vibe into .pre-commit-config.yaml",
+            }, ensure_ascii=False))
+            return 1
+    if not src.is_file():
+        print(json.dumps({"ok": False, "error": f"hook template missing: {src}"}, ensure_ascii=False))
+        return 2
+    target.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        target.chmod(0o755)
+    except OSError:
+        pass
+    print(json.dumps({"ok": True, "installed": str(target),
+                      "note": "staged files are validated before every commit; skip with --no-verify"}, ensure_ascii=False))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +644,20 @@ def cmd_selftest(args) -> int:
             checks["log_writable"] = p.is_file()
         ref = (PROJECT_ROOT / "rules" / "cwe_reference.yaml").is_file()
         checks["cwe_reference"] = ref
+        # positive/negative sample suite (zero external deps) — measurable rates,
+        # explicitly labeled a small self-test suite, not an authoritative benchmark
+        from core.selftest_suite import run_suite
+        suite = run_suite()
+        checks["sample_suite"] = {
+            "total": suite["total"],
+            "should_flag": suite["should_flag"],
+            "detected": suite["detected"],
+            "detection_rate": suite["detection_rate"],
+            "false_positives": suite["false_positive_count"],
+            "missed": suite["missed"][:5],
+            "fp_detail": suite["false_positives"][:5],
+            "note": "small self-test suite (自测小样本), not an authoritative benchmark",
+        }
         ok = all([checks["rules_loaded"] > 0, checks["detects_eval"],
                   checks["safe_code_passes"], checks["detects_c_sprintf"],
                   checks["c_safe_passes"], checks["detects_cpp_strcpy"],
@@ -404,7 +668,8 @@ def cmd_selftest(args) -> int:
                   checks["detects_py_ssrf"], checks["detects_py_ml_deser"],
                   checks["detects_java_exec"], checks["detects_node_exec"],
                   checks["detects_gha_injection"],
-                  checks["log_writable"]])
+                  checks["log_writable"],
+                  not suite["missed"] and not suite["false_positives"]])
         print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
         return 0 if ok else 1
     except Exception as exc:
@@ -413,6 +678,30 @@ def cmd_selftest(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+
+def _warn_interpreter_mismatch() -> None:
+    """If config.yaml records a chosen interpreter and we are not running under it, warn on stderr.
+
+    The install script writes the probed interpreter into config.yaml (interpreter:);
+    running under a different one usually means pyyaml/pip state divergence.
+    """
+    try:
+        recorded = (_load_config().get("interpreter") or "").strip()
+    except Exception:
+        return
+    if not recorded:
+        return
+    try:
+        same = Path(recorded).resolve() == Path(sys.executable).resolve()
+    except Exception:
+        same = False
+    if not same:
+        print(
+            f"[secure-vibe] note: config.yaml records interpreter {recorded} but you are running {sys.executable}; "
+            f"if this fails, re-run: \"{recorded}\" cli.py selftest",
+            file=sys.stderr,
+        )
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="secure-vibe-cli", description="Secure-Vibe agent toolchain")
@@ -432,6 +721,24 @@ def main(argv=None) -> int:
     p.add_argument("--language", default="python")
     p.add_argument("--ignore", default="", help="rule IDs to ignore, comma-separated")
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("sast", help="scan a directory (builtin + semgrep + dependency scanners)")
+    p.add_argument("path", help="directory to scan")
+    p.add_argument("--fail-on", default="high", choices=["high", "any", "never"],
+                   help="severity level that blocks (default: high)")
+    p.add_argument("--no-semgrep", action="store_true", help="skip the semgrep engine")
+    p.add_argument("--no-deps", action="store_true", help="skip dependency scanners")
+    p.add_argument("--full", action="store_true", help="report all findings, not only blocking ones")
+    p.set_defaults(func=cmd_sast)
+
+    p = sub.add_parser("precommit", help="validate staged files (pre-commit hook entry)")
+    p.add_argument("--all", action="store_true", help="validate all tracked files instead of staged only")
+    p.add_argument("--fail-on", default="high", choices=["high", "any", "never"],
+                   help="severity level that blocks (default: high)")
+    p.add_argument("--full", action="store_true")
+    p.add_argument("--install-hook", action="store_true",
+                   help="install hooks/pre-commit into .git/hooks (idempotent)")
+    p.set_defaults(func=cmd_precommit)
 
     p = sub.add_parser("log", help="record a generation process")
     p.add_argument("--task", required=True)
@@ -467,6 +774,8 @@ def main(argv=None) -> int:
     p.set_defaults(func=cmd_selftest)
 
     args = ap.parse_args(argv)
+    if args.cmd not in ("version",):   # version reports interpreter info itself
+        _warn_interpreter_mismatch()
     return args.func(args)
 
 

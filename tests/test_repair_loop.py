@@ -1,4 +1,5 @@
 """tests/test_repair_loop.py — repair loop + logging + end-to-end tests (Mock backend, offline)."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import json
 import sys
 import tempfile
@@ -67,7 +68,9 @@ def test_repair_loop_gives_up_after_max_retries():
     assert not outcome.passed
     assert outcome.needs_human_review
     assert outcome.total_retries == 2
-    assert "needs human review" in outcome.report
+    assert "human review ticket" in outcome.report
+    assert "Unfixed violations" in outcome.report
+    assert "Alternatives" in outcome.report
     assert outcome.code  # best version still delivered
 
 

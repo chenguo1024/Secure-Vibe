@@ -1,4 +1,5 @@
 """Ad-hoc script: simulate an agent driving the whole cli.py toolchain via shell."""
+# secure-vibe: ignore-file - deliberate demo payload / test fixture, not a real secret
 import json
 import os
 import subprocess

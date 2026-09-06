@@ -1,0 +1,13 @@
+# Secure-Vibe pre-commit configuration (optional framework users).
+# The zero-dependency path is hooks/pre-commit (installed directly into .git/hooks
+# by install.sh / install.ps1 / `python cli.py precommit --install-hook`).
+# This file is for teams already using the pre-commit framework.
+repos:
+  - repo: local
+    hooks:
+      - id: secure-vibe
+        name: secure-vibe (fast security lint)
+        entry: python cli.py precommit --fail-on high
+        language: system
+        pass_filenames: false
+        always_run: true

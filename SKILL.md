@@ -1,11 +1,11 @@
 ---
 name: secure-vibe
-description: Secure-by-generation guardrail for AI coding agents. Before writing code, inject security rules; after generating, validate in milliseconds and auto-repair up to 3 rounds, with full JSONL audit logging. Supports Python/C/C++/PHP/HTML/JS/Go/Java/Shell/Dockerfile/Kubernetes/Terraform/GitHub Actions. Use whenever the user asks to write or modify code, scripts, APIs, database operations, or container/infrastructure configs. Workflow: run `python cli.py context` first to load the rules, write the code, run `python cli.py validate` immediately after, fix per fix_hint, and finish with `python cli.py log`.
+description: Fast security lint + commit gate for AI coding agents. Before writing code, inject security rules; after generating, validate in milliseconds and auto-repair up to 3 rounds, with full JSONL audit logging. Also scans whole directories (sast) and gates git commits (precommit). Supports Python/C/C++/PHP/HTML/JS/Go/Java/Shell/Dockerfile/Kubernetes/Terraform/GitHub Actions. Use whenever the user asks to write or modify code, scripts, APIs, database operations, or container/infrastructure configs. Workflow: run `python cli.py context` first to load the rules, write the code, run `python cli.py validate` immediately after, fix per fix_hint, and finish with `python cli.py log`.
 ---
 
-# Secure-Vibe — Secure-by-Generation Coding Skill
+# Secure-Vibe — Fast security lint + commit gate
 
-You (the agent) are now in secure-by-generation mode. **You do not generate first and inspect later — you load the security constraints before writing the first line of code.** The validator and rule engine in this directory are Python tools; the LLM is you (session mode) — no API key needed.
+You (the agent) get the security constraints loaded before writing the first line of code — the validator and rule engine in this directory are Python tools; the LLM is you (session mode) — no API key needed. This is a fast linter plus a mechanical commit gate; it is not a full SAST (no interprocedural analysis, no runtime protection).
 
 ## Invocation (uniform across agents)
 
@@ -61,7 +61,7 @@ Code per the rules. Hard requirements:
 - Security-sensitive randomness uses `secrets` (Python) / `crypto/rand` (Go) / `SecureRandom` (Java); never `random`/`math/rand`/`rand()`.
 - Password hashing uses bcrypt/argon2/PBKDF2; never md5/sha1.
 
-### Step 3: Validate immediately (millisecond-scale, mandatory)
+### Step 3: Validate immediately (millisecond-scale; this repository's own commits are validated by the hook and CI)
 
 ```bash
 python "$SKILL_DIR/cli.py" validate --file <your code file> --language <python|c|cpp|php|html|js|go|sh|java|dockerfile|kubernetes|terraform|github-actions>
@@ -82,7 +82,7 @@ Fix the code per `fix_hint`, then re-run Step 3.
 - **Max 3 retries.** If round 3 still fails, stop, output the full violation list and mark it **[needs human review]**.
 - Respect `severity`: `high` must be fixed (hardcoded secrets, SQL concat, command injection); `medium` should be fixed, or explain explicitly why not; `low` (e.g. plaintext http for local debugging) may be exempted with an explanatory comment.
 
-### Step 5: Log (mandatory)
+### Step 5: Log (mechanism: every generation in this repository is recorded via the JSONL audit trail)
 
 ```bash
 python "$SKILL_DIR/cli.py" log --task "<task description>" --file <final code file> --retries <actual retry count> --verdict <verdict>
@@ -133,16 +133,30 @@ Task: "Write a FastAPI endpoint that queries orders by username (SQLite)"
 |---------|---------|-----------|
 | `context --task ... [--framework f] [--full]` | Get the security rule list (call before writing code) | 0 |
 | `validate --file f.py [--code "..."] [--ignore R1,R2]` | Validate code (call after writing) | 0 pass / 1 violations / 2 error |
+| `sast <dir> [--fail-on high\|any\|never] [--no-semgrep] [--no-deps]` | Scan a whole directory (builtin + semgrep + dependency scanners) | 0 clean / 1 findings / 2 error |
+| `precommit [--all] [--install-hook]` | Validate staged files (git pre-commit hook entry) | 0 clean / 1 findings / 2 error |
 | `log --task ... --file f.py --retries N --verdict v` | Record the generation process | 0 |
 | `missed --pattern ... [--note ...]` | Report a missed detection pattern | 0 |
 | `cwe --id CWE-89` | Query CWE reference knowledge | 0 / 1 |
 | `version [--check <url>]` | Show installed version / compare with remote latest | 0 |
 | `update` | Update the skill (git pull + self-test on git-managed installs) | 0 / 1 |
-| `selftest` | Install self-test | 0 / 1 |
+| `selftest` | Install self-test (+ 56-sample positive/negative suite) | 0 / 1 |
+
+## Commit gate (mechanism, not exhortation)
+
+- In a repository where this skill is installed, commits are mechanically validated: the
+  pre-commit hook runs `cli.py precommit` on staged files, and the CI job runs
+  `cli.py sast` on push. Findings at `--fail-on` severity block the merge — no agent
+  cooperation required. Skipping the hook locally (`--no-verify`) does not skip CI.
+- When writing code **in this repository**, run `python "$SKILL_DIR/cli.py" precommit`
+  after staging, or simply commit and let the hook run. When the hook blocks, the JSON
+  output lists the findings with `fix_hint`; fix and re-stage.
+- `sast`/`precommit` scan the built-in rules plus (when available) semgrep and dependency
+  scanners; engines that did not run are reported as skipped with the reason.
 
 ## Self-check checklist (after every generation)
 
-After generation you MUST review the checklist and output the following line **verbatim at the end of your final reply** as a user-visible compliance record:
+After generation, review the checklist and output the following line at the end of your final reply as a user-visible compliance record (this repository's CI and pre-commit hook validate the same rules mechanically, so this line summarizes what was verified):
 
 ```
 [Self-check] SQL injection: OK/N/A | Command injection: OK/N/A | Hardcoded secrets: OK | Weak randomness: OK/N/A | Input validation: OK | TLS: OK/N/A

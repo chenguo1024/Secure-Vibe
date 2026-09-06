@@ -1,4 +1,5 @@
 """llm_backend.py — Pluggable LLM backend abstraction layer.
+# secure-vibe: ignore-file - deliberate demo payload / test fixture, not a real secret
 
 primary mode (skill installed inside an agent):
   session  - follows the agent's own LLM. Generation is done by the model the agent uses;

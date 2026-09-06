@@ -1,4 +1,5 @@
 """tests/test_main.py — entry-function behavior tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

@@ -40,3 +40,21 @@ jobs:
       - name: HTTP server smoke
         run: |
           python tools/server_smoke.py
+
+  # Commit gate: the repo's own code must pass its own lint before merge.
+  # semgrep runs here (CI installs it); locally it degrades gracefully.
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install gate dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml semgrep
+      - name: Self-lint (builtin rules + semgrep, fail on high)
+        run: |
+          python cli.py sast core --fail-on high
+          python cli.py sast tools --fail-on high

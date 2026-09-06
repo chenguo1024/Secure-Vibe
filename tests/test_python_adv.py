@@ -1,4 +1,5 @@
 """tests/test_python_adv.py — Python deep rules (SSRF/XXE/SSTI/path/ML/JWT/CORS/NoSQL etc.)."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

@@ -1,4 +1,5 @@
 """tests/test_iac.py — Dockerfile/Kubernetes/Terraform IaC rule tests."""
+# secure-vibe: ignore-file - deliberate attack samples as test fixtures
 import sys
 from pathlib import Path
 

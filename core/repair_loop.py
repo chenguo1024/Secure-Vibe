@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from core.ast_fixer import deterministic_fix
 from core.context_builder import build_local_rewrite_prompt, build_prompts, build_repair_prompt
@@ -53,6 +53,8 @@ class GenerationOutcome:
     total_retries: int = 0
     llm_calls: int = 0
     total_elapsed_ms: float = 0.0
+    review_ticket: str = ""           # path to the human-review markdown file (when written)
+    regression: Optional[dict] = None  # post-repair regression verification result
 
     def summary(self) -> str:
         status = "PASS" if self.passed else ("FAIL(needs human review)" if self.needs_human_review else "FAIL")
@@ -94,6 +96,8 @@ def generate_secure_code(
     blacklist_dir=None,
     templates_dir=None,
     on_round=None,
+    regression_check: Optional[Callable[[str], Optional[bool]]] = None,
+    review_dir=None,
 ) -> GenerationOutcome:
     """Core entry point: generate -> validate -> hybrid repair loop.
 
@@ -105,6 +109,12 @@ def generate_secure_code(
         max_retries: maximum repair rounds
         strategy: hybrid (default) | llm_only
         on_round: per-round callback on_round(RepairRound), for logging/progress
+        regression_check: optional callable(code) -> True/False/None. Called when a
+            repair first passes the lint; False = the project's tests fail with the
+            repaired code = the repair is reverted (a passing lint that breaks
+            behavior is a failed repair). None = regression verification disabled.
+        review_dir: optional directory; when retries are exhausted a full human-review
+            markdown ticket (context + alternatives) is written there.
     Returns:
         GenerationOutcome
     """
@@ -130,6 +140,8 @@ def generate_secure_code(
 
     # ---- repair loop ----
     retries = 0
+    regression_ran = False
+    regression_verdict: Optional[bool] = None
     while not result.passed and retries < max_retries:
         retries += 1
 
@@ -137,8 +149,23 @@ def generate_secure_code(
         if strategy == "hybrid":
             fixed_code, fixed_rules = _apply_deterministic_fixes(code, result.violations)
             if fixed_rules and fixed_code != code:
-                code = fixed_code
-                result = v.validate(code)
+                new_result = v.validate(fixed_code)
+                if new_result.passed and regression_check is not None:
+                    verdict = regression_check(fixed_code)
+                    if verdict is False:
+                        # the fix broke behavior: revert, keep the loop going
+                        rd = RepairRound(retries, fixed_code, new_result,
+                                         action="deterministic_fix; reverted (regression failed)",
+                                         elapsed_ms=new_result.elapsed_ms)
+                        rounds.append(rd)
+                        if on_round:
+                            on_round(rd)
+                        regression_ran = True
+                        regression_verdict = False
+                        continue
+                    regression_ran = regression_ran or (verdict is True)
+                    regression_verdict = verdict if verdict is True else regression_verdict
+                code, result = fixed_code, new_result
                 rd = RepairRound(retries, code, result, action="deterministic_fix",
                                  elapsed_ms=result.elapsed_ms)
                 rounds.append(rd)
@@ -161,9 +188,25 @@ def generate_secure_code(
             repair_prompt = build_repair_prompt(code, result.summary(), language)
 
         llm_calls += 1
-        code = _extract_code(backend.generate(system_prompt, repair_prompt), language)
-        code = _strip_markdown_fence(code)
-        result = v.validate(code)
+        new_code = _extract_code(backend.generate(system_prompt, repair_prompt), language)
+        new_code = _strip_markdown_fence(new_code)
+        new_result = v.validate(new_code)
+        if new_result.passed and regression_check is not None and not result.passed:
+            verdict = regression_check(new_code)
+            if verdict is False:
+                # the LLM fix broke behavior: revert to the pre-repair state
+                rd = RepairRound(retries, new_code, new_result,
+                                 action="llm_repair; reverted (regression failed)",
+                                 elapsed_ms=new_result.elapsed_ms)
+                rounds.append(rd)
+                if on_round:
+                    on_round(rd)
+                regression_ran = True
+                regression_verdict = False
+                continue
+            regression_ran = True
+            regression_verdict = verdict if verdict is True else regression_verdict
+        code, result = new_code, new_result
         rd = RepairRound(retries, code, result, action="llm_repair",
                          elapsed_ms=result.elapsed_ms)
         rounds.append(rd)
@@ -172,30 +215,119 @@ def generate_secure_code(
 
     # ---- wrap-up ----
     total_ms = (time.perf_counter() - t0) * 1000
+    regression_dict = (
+        {"ran": regression_ran, "passed": regression_verdict}
+        if regression_check is not None else None
+    )
     if result.passed:
         return GenerationOutcome(
             code=code, passed=True, needs_human_review=False,
             rounds=rounds, total_retries=retries, llm_calls=llm_calls,
-            total_elapsed_ms=total_ms,
+            total_elapsed_ms=total_ms, regression=regression_dict,
         )
 
-    # retries exhausted: deliver the round with the fewest violations + a full report
+    # retries exhausted: deliver the round with the fewest violations + a full review ticket
     best = _best_round(rounds)
-    report_lines = [
-        "# Secure-Vibe vulnerability report (needs human review)",
-        f"Task: {task_description}",
-        f"Language: {language}" + (f"  Framework: {framework}" if framework else ""),
-        f"Retries: {retries}/{max_retries}",
+    ticket = _build_review_ticket(
+        task_description, language, framework, max_retries, retries, best, rounds,
+    )
+    ticket_path = ""
+    if review_dir is not None:
+        from pathlib import Path as _P
+        rd = _P(review_dir)
+        rd.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        safe = re.sub(r"[^\w\-]+", "-", task_description)[:40].strip("-") or "task"
+        p = rd / f"review-{stamp}-{safe}.md"
+        p.write_text(ticket, encoding="utf-8")
+        ticket_path = str(p)
+    return GenerationOutcome(
+        code=best.code, passed=False, needs_human_review=True,
+        rounds=rounds, report=ticket, total_retries=retries, llm_calls=llm_calls,
+        total_elapsed_ms=total_ms, review_ticket=ticket_path,
+        regression=regression_dict,
+    )
+
+
+def _build_review_ticket(
+    task_description: str,
+    language: str,
+    framework: str,
+    max_retries: int,
+    retries: int,
+    best: "RepairRound",
+    rounds: list["RepairRound"],
+) -> str:
+    """Full human-review markdown: context, per-violation analysis, alternatives, next steps."""
+    lines = [
+        "# Secure-Vibe human review ticket",
         "",
-        best.result.summary(),
+        f"**Task**: {task_description}",
+        f"**Language**: {language}" + (f"  **Framework**: {framework}" if framework else ""),
+        f"**Retries**: {retries}/{max_retries} — the repair loop did not converge",
         "",
+    ]
+
+    # regression status
+    reverted = [r for r in rounds if "reverted" in r.action]
+    if reverted:
+        lines += [
+            "## Regression verification",
+            "",
+            f"{len(reverted)} repair round(s) passed the lint but broke behavior "
+            f"(regression check failed) and were reverted:",
+            "",
+        ]
+        lines += [f"- round {r.round_no}: {r.action}" for r in reverted]
+        lines.append("")
+
+    lines += [best.result.summary(), ""]
+
+    # per-violation analysis with alternatives
+    lines += ["## Unfixed violations (with alternatives)", ""]
+    templates: list[str] = []
+    cwes: list[str] = []
+    for viol in best.result.violations:
+        lines.append(f"### {viol.rule_id} — line {viol.line} [{viol.severity}]")
+        lines.append(f"- **what**: {viol.message}")
+        lines.append(f"- **how to fix**: {viol.fix_hint}")
+        if viol.cwe:
+            cwes.append(viol.cwe)
+        if viol.template:
+            templates.append(viol.template)
+            lines.append(f"- **reference implementation**: `templates/{language}/{viol.template}` "
+                         f"(run `python cli.py context --task \"{task_description}\" --language {language} --full` "
+                         f"to see it inline)")
+        if viol.cwe:
+            lines.append(f"- **background**: `python cli.py cwe --id {viol.cwe}`")
+        lines.append(f"- **code at line {viol.line}**: `{viol.snippet}`")
+        lines.append("")
+
+    # alternatives & next steps
+    lines += ["## Alternatives & next steps", ""]
+    if templates:
+        seen = []
+        for t in templates:
+            if t not in seen:
+                seen.append(t)
+        lines.append("1. Start from the safe reference templates listed above and adapt them, "
+                     "instead of patching the generated code further.")
+    lines.append("1. Split the task: fix one violation per prompt round and re-validate between steps.")
+    lines.append("1. If the violations conflict (e.g. the framework requires the flagged API), "
+                 "document why and add the rule ID to `--ignore` for this file only, "
+                 "then report the pattern via `python cli.py missed` so the rule can be refined.")
+    lines.append("1. Re-run `python cli.py validate --file <file>` after each change.")
+    lines.append("")
+    lines += [
         "## Delivered code (best version, still contains unfixed violations)",
         f"```{language}",
         best.code,
         "```",
+        "",
+        "## Round history",
+        "",
     ]
-    return GenerationOutcome(
-        code=best.code, passed=False, needs_human_review=True,
-        rounds=rounds, report="\n".join(report_lines),
-        total_retries=retries, llm_calls=llm_calls, total_elapsed_ms=total_ms,
-    )
+    for r in rounds:
+        lines.append(f"- round {r.round_no} [{r.action}]: {len(r.result.violations)} violation(s), "
+                     f"{r.result.summary()}")
+    return "\n".join(lines)

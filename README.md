@@ -1,12 +1,22 @@
-# Secure-Vibe — Secure-by-Generation Coding Skill
+# Secure-Vibe — Fast security lint + engine orchestrator + commit gate
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Languages](https://img.shields.io/badge/Languages-13-green)
 ![Rules](https://img.shields.io/badge/Rules-110-orange)
-![Tests](https://img.shields.io/badge/Tests-225-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-238-brightgreen)
 [![CI](https://github.com/chenguo1024/Secure-Vibe/actions/workflows/ci.yml/badge.svg)](https://github.com/chenguo1024/Secure-Vibe/actions/workflows/ci.yml)
 
-In vibe-coding (AI freely generates code) scenarios, **guide the model to write secure code during generation itself** — not "generate first, check later", but: security context injection → generation → millisecond validation → automatic repair loop.
+A millisecond-scale security linter for AI-generated code, an orchestrator that delegates to
+real engines (built-in rules + semgrep + dependency scanners), and a commit gate
+(pre-commit hook + CI job) so insecure code is mechanically blocked, not just discouraged.
+
+- **Fast lint**: ~0.2 ms per check, zero API keys, fully offline — runs inside an agent's inner loop.
+- **Engine orchestrator**: built-in 110-rule engine + semgrep (auto-installed in CI, graceful
+  degrade locally) + pip-audit / govulncheck / npm audit, normalized into one finding shape.
+- **Commit gate**: `cli.py precommit` hooks into git; `cli.py sast` runs as a CI job. Findings
+  block the merge; skipping the hook locally does not skip CI.
+- **Not** a full SAST: no interprocedural analysis, no runtime protection, no ops story. The
+  built-in engine is deliberately shallow and complements (not replaces) deep scanners.
 
 ## Quick start (5 minutes, no agent needed)
 
@@ -17,6 +27,10 @@ git clone git@github.com:chenguo1024/Secure-Vibe.git && cd Secure-Vibe
 python cli.py selftest                                  # verify the install: {"ok": true, ...}
 python cli.py context --task "write a login endpoint" --language python   # the rules the generator will see
 python cli.py validate --code 'x = eval(user_input)' --language python    # exit 1, violations below
+
+# commit gate: hook into git + scan a whole directory
+python cli.py precommit --install-hook                  # staged files are validated before every commit
+python cli.py sast .                                    # builtin + semgrep + dependency scanners
 ```
 
 `validate` output for that snippet (exit code 1):
@@ -59,8 +73,9 @@ directory** — any agent that can run a shell can invoke it:
 | Claude Code | `~/.claude/skills/secure-vibe` | `./install.sh claude` or `powershell -File install.ps1 -Agent claude` |
 | Other/custom | anywhere | `./install.sh /path/to/skills/secure-vibe` or `-Target "C:\..."` |
 
-- Runtime requirement: any Python 3.7+ (use `python3` on Linux/macOS) + `pyyaml` (`pip install pyyaml`, see `requirements.txt`). The install script auto-detects an interpreter with pyyaml and runs `selftest`.
-- `context` / `validate` / `log` / `selftest` run locally at millisecond scale — **zero network, zero API key**.
+- Runtime requirement: any Python 3.8+ (use `python3` on Linux/macOS) + `pyyaml` (`pip install pyyaml`, see `requirements.txt`). The install script auto-detects an interpreter with pip, records the chosen interpreter into `config.yaml` (`interpreter:` — `cli.py` warns at startup when running under a different one), and runs `selftest`; on missing deps it prints machine-specific fix commands instead of a bare traceback.
+- `context` / `validate` / `sast` / `precommit` / `log` / `selftest` run locally at millisecond scale — **zero network, zero API key**.
+- **After installing, restart the agent session and verify by asking the agent to list its available skills** (the skill name is `secure-vibe`).
 
 ### Mode A: install into an agent (recommended, the skill's primary form)
 
@@ -288,15 +303,19 @@ print(v.validate('std::strcpy(dst, src);').summary())
 
 ## Trust & guarantees
 
-- **Deterministic fixes are provably safe-equivalent**: the four AST rewrites (random→secrets, md5/sha1→sha256,
-  yaml.load→safe_load, plaintext constant→os.environ.get) never go through an LLM and are re-validated after applying.
-- **Everything the LLM receives is auditable**: the full system prompt (rules, blacklists, templates, checklist)
-  is built by `cli.py context` and logged; every repair round is recorded in JSONL with the violation list, the code,
-  the action taken, and the verdict. Nothing the generator sees or returns is opaque.
-- **Secrets are masked in logs** on a best-effort basis (`logging.mask_secrets`), and the taint engine records the
-  full input→sink chain so worst-case fixes can be verified (see ③a).
-- Honest boundary: this is a **high-confidence guardrail, not a full SAST**. It cannot reason across modules or
-  about sanitizers; treat `passed` as "no known violation of the 110 rules", not a security proof.
+- **Deterministic fixes are mechanically constrained**: the four AST rewrites (random→secrets,
+  md5/sha1→sha256, yaml.load→safe_load, plaintext constant→os.environ.get) never go through an LLM
+  and are re-validated after applying. Optionally, post-repair regression verification runs the
+  project's own tests; a fix that breaks behavior is reverted.
+- **Everything is auditable**: the full system prompt is built by `cli.py context` and logged; every
+  repair round is recorded in JSONL with the violation list, the code, the action taken, and the
+  verdict. When the repair loop does not converge, a full human-review ticket is written
+  (context, per-violation analysis, alternatives) instead of a bare failure flag.
+- **Secrets are masked in logs** on a best-effort basis (`logging.mask_secrets`).
+- Honest boundary: this is a **fast linter + orchestrator + commit gate, not a security proof**.
+  It cannot reason across modules, model sanitizers, or protect anything at runtime. Enforcement
+  is mechanical (the hook and the CI job), but the checks themselves are shallow; deep guarantees
+  come from the integrated engines (semgrep, dependency scanners), not from this tool alone.
 
 ## Detection coverage notes
 
@@ -310,23 +329,28 @@ print(v.validate('std::strcpy(dst, src);').summary())
 ## Tests
 
 ```bash
-python -m pytest tests/ -q          # unit + integration (225: validation/repair/taint/log/AST-fix + all languages)
-python cli.py selftest              # post-install self-test
+python -m pytest tests/ -q          # unit + integration (238: validation/repair/taint/log/AST-fix + all languages)
+python cli.py selftest              # post-install self-test + 56-sample positive/negative suite
 python tools/agent_e2e_check.py     # offline agent-toolchain E2E
-python tools/benchmark.py           # local benchmark (detection 1.0 / FPR 0.0 / ~0.16ms)
+python tools/benchmark.py           # local benchmark (detection 1.0 / FPR 0.0 / ~0.2ms)
 ```
 
-## Why this over Semgrep / CodeQL
+Numbers above come from the built-in sample suite (自测小样本, small self-test), not an
+authoritative external benchmark. For paper-grade numbers, run
+`python tools/run_evaluation.py --path <SecurityEval dataset>` (labels its output
+"authoritative benchmark" when run on the real dataset).
 
-| | Secure-Vibe | Semgrep / CodeQL |
-|---|---|---|
-| Timing | **at generation** (the model never emits the insecure line) | after writing, in CI |
-| Latency | ~0.16 ms/check — runs in the agent's inner loop | seconds to minutes |
-| Feedback to the AI | per-violation `fix_hint` + safe-equivalent templates that the generator can imitate | SARIF reports aimed at humans |
-| Operates | fully offline, zero API key, works inside any agent | requires server/CI integration |
-| Depth | line-level + Python taint; 110 curated rules | interprocedural data flow, thousands of rules |
+## Engine positioning (built-in vs integrated)
 
-They are complementary: Secure-Vibe keeps the agent honest while it types; Semgrep/CodeQL is the safety net before merge.
+| | Built-in engine | semgrep (integrated) | pip-audit / govulncheck / npm audit |
+|---|---|---|---|
+| Role | fast lint in the agent's inner loop | deep rule coverage | known-vulnerable dependencies |
+| Latency | ~0.2 ms/check | seconds | seconds |
+| Depth | line-level + Python taint, 110 rules | thousands of community rules | OSV databases |
+| Availability | zero deps beyond pyyaml | auto-installed in CI; graceful degrade locally with an install hint | detected per ecosystem, skipped honestly when absent |
+
+The built-in engine is intentionally shallow and never claims to replace the others —
+`cli.py sast` runs all of them and reports which engines ran, which were skipped, and why.
 
 ## Troubleshooting
 
@@ -354,6 +378,8 @@ They are complementary: Secure-Vibe keeps the agent honest while it types; Semgr
 
 - The regex engine is **line-level**; cross-line data flow is covered by the taint engine (Python only) or blacklist patterns.
 - Sanitizers are not modeled (sound over-approximation: flagging a sanitized value is possible).
+- **No interprocedural analysis, no runtime protection, no deployment/ops checks** — a passing
+  gate means "no known violation of the built-in rules", nothing more.
 - Other languages (Rust/Ruby/Swift) fall back to general rules only.
 
 ## License

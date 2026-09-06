@@ -4,6 +4,9 @@
   name: hardcoded_secret
   severity: high
   cwe: CWE-798
+  # literal_sensitive: patterns 2-6 match string CONTENTS (secret charsets) —
+  # this rule is matched against the raw line, not the lexically stripped shape
+  literal_sensitive: true
   message: "Hardcoded secret/password/API key detected | 检测到硬编码密钥/密码/API Key"
   fix_hint: "Never hardcode secrets in code; read from environment variables (os.environ) or inject at deploy time; rotate any exposed secrets. | 不要在代码中硬编码密钥。改从环境变量读取（os.environ），或在部署时注入配置；同时轮换已泄露的密钥。"
   template: secure_config
@@ -30,6 +33,8 @@
   name: plaintext_http
   severity: low
   cwe: CWE-319
+  # literal_sensitive: http:// appears inside string values, not in code shape
+  literal_sensitive: true
   message: "Plaintext HTTP URL used - traffic is unencrypted | 使用明文 HTTP 链接，传输未加密"
   fix_hint: "Use https://; if plain http is truly necessary (e.g. local debugging) add an explicit comment explaining why. | 改用 https://；确需 http（如本地调试）时请显式注释说明原因。"
   match:
@@ -81,6 +86,8 @@
   name: sql_string_concat
   severity: high
   cwe: CWE-89
+  # literal_sensitive: SELECT/INSERT keywords live inside the string content
+  literal_sensitive: true
   message: "SQL statement string concatenation/formatting detected (SQL injection risk) | 检测到 SQL 语句字符串拼接/格式化（SQL 注入风险）"
   fix_hint: "Use parameterized queries: cursor.execute(sql, params) or ORM bound parameters; never build SQL via f-string/%/.format/+ concatenation. | 使用参数化查询：cursor.execute(sql, params)，或 ORM 的绑定参数；禁止 f-string/%/.format/+ 拼接 SQL。"
   template: db_query
@@ -128,6 +135,8 @@
   name: jwt_no_verify
   severity: high
   cwe: CWE-347
+  # literal_sensitive: verify_signature appears as a string dict key
+  literal_sensitive: true
   message: "JWT decoded without signature verification | JWT 解码未校验签名"
   fix_hint: "Must use jwt.decode(token, key, algorithms=[...]); never disable signature verification via options. | 必须使用带密钥和算法校验的 jwt.decode(token, key, algorithms=[...])；禁止关闭签名校验的 options 配置。"
   match:

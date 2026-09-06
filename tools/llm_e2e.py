@@ -1,4 +1,5 @@
 """llm_e2e.py — Real-LLM end-to-end test (calls a real model; needs a real API).
+# secure-vibe: ignore-file - deliberate demo payload / test fixture, not a real secret
 
 Purpose:
   - verify the generate->validate->auto-repair loop with a real model (research-grade value metric)

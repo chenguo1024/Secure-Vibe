@@ -60,6 +60,8 @@
   name: js_postmessage_wildcard
   severity: medium
   cwe: CWE-346
+  # literal_sensitive: the wildcard "*" appears as a string argument
+  literal_sensitive: true
   message: "postMessage with a wildcard target origin (messages can go to any domain) | postMessage 使用通配符目标源（跨源消息可发给任意域）"
   fix_hint: "Set targetOrigin to an explicit origin (e.g. \"https://app.example.com\"); never \"*\"; the receiver must validate event.origin. | targetOrigin 指定明确的源（如 \"https://app.example.com\"），禁止 \"*\"；接收端必须校验 event.origin。"
   match:
