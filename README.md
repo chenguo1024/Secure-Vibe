@@ -4,10 +4,47 @@
 ![Languages](https://img.shields.io/badge/Languages-13-green)
 ![Rules](https://img.shields.io/badge/Rules-110-orange)
 ![Tests](https://img.shields.io/badge/Tests-225-brightgreen)
+[![CI](https://github.com/chenguo1024/Secure-Vibe/actions/workflows/ci.yml/badge.svg)](https://github.com/chenguo1024/Secure-Vibe/actions/workflows/ci.yml)
 
 In vibe-coding (AI freely generates code) scenarios, **guide the model to write secure code during generation itself** — not "generate first, check later", but: security context injection → generation → millisecond validation → automatic repair loop.
 
-## Two usage modes
+## Quick start (5 minutes, no agent needed)
+
+```bash
+pip install pyyaml            # the only dependency
+git clone git@github.com:chenguo1024/Secure-Vibe.git && cd Secure-Vibe
+
+python cli.py selftest                                  # verify the install: {"ok": true, ...}
+python cli.py context --task "write a login endpoint" --language python   # the rules the generator will see
+python cli.py validate --code 'x = eval(user_input)' --language python    # exit 1, violations below
+```
+
+`validate` output for that snippet (exit code 1):
+
+```json
+{
+  "ok": true, "passed": false, "language": "python",
+  "violations": [
+    {
+      "rule_id": "PY-001", "line": 1, "severity": "high", "checker": "ast",
+      "snippet": "x = eval(user_input)",
+      "fix_hint": "Never feed untrusted input to eval/exec. JSON -> json.loads; ...",
+      "cwe": "CWE-95"
+    }
+  ],
+  "repair_instruction": "1 violation(s) found. Fix them one by one per fix_hint, ..."
+}
+```
+
+Fix the snippet per `fix_hint`, re-validate, and when it passes:
+
+```bash
+python cli.py log --task "login endpoint" --file fixed.py --retries 1 --verdict passed
+```
+
+For the full agent loop (context → generate → validate → repair ≤3× → log), install the skill (next section) or run `python main.py --demo` for a 10-second mock end-to-end.
+
+## Usage modes
 
 ### Cross-agent installation (opencode / Codex / Claude Code)
 
@@ -145,6 +182,8 @@ Secure-Vibe/
 ├── server.py                   # optional FastAPI service
 ├── install.ps1 / install.sh    # cross-agent installers (opencode/Codex/Claude Code)
 ├── VERSION                     # skill version
+├── LICENSE                     # MIT
+├── SECURITY.md                 # security policy & missed-detection reporting
 ├── core/
 │   ├── context_builder.py  # step 1: builds the security context (persona + general rules + language rules + blacklists + few-shot + checklist)
 │   ├── validator.py        # step 3: three-engine validator (AST dangerous calls + regex blacklist + taint confirmations)
@@ -227,9 +266,10 @@ with a justification comment.
 
 ## How to add templates (few-shot)
 
-Write `templates/<language>/<name>.<ext>` as **provably safe** code; `context_builder` pulls it in
-on-demand via keyword matching (few-shot to keep token usage under control).
-Extending the LLM with safe XDL is the point: `templates/python/` examples, plus `c/cpp/php/html/js/go/sh/java` dirs.
+Write `templates/<language>/<name>.<ext>` containing **provably safe** code. `context_builder` pulls templates in
+on-demand by matching task keywords (few-shot keeps token usage low), and the violation's `template` field points
+high-risk items at a specific template for the deterministic fix. Examples live in `templates/python/` plus the
+`c/cpp/php/html/js/go/sh/java` directories.
 
 ## How to add languages / extend the model
 
@@ -246,13 +286,17 @@ v = Validator(language="cpp")   # inherits C rules automatically
 print(v.validate('std::strcpy(dst, src);').summary())
 ```
 
-## Security of the repair LLM itself
+## Trust & guarantees
 
-[SKILL.md] is the source of truth for reference and evaluation:
-the LLM receives hard "generation-time security constraints"
-(constraints at generation time + repair instructions that "the cone is limited to known vulnerability classes"
-(no natural occlusion — the entire pipeline is reference and evaluation).
-Also: taint-analysis chain records keep worst-case fix correctness (see ③a).
+- **Deterministic fixes are provably safe-equivalent**: the four AST rewrites (random→secrets, md5/sha1→sha256,
+  yaml.load→safe_load, plaintext constant→os.environ.get) never go through an LLM and are re-validated after applying.
+- **Everything the LLM receives is auditable**: the full system prompt (rules, blacklists, templates, checklist)
+  is built by `cli.py context` and logged; every repair round is recorded in JSONL with the violation list, the code,
+  the action taken, and the verdict. Nothing the generator sees or returns is opaque.
+- **Secrets are masked in logs** on a best-effort basis (`logging.mask_secrets`), and the taint engine records the
+  full input→sink chain so worst-case fixes can be verified (see ③a).
+- Honest boundary: this is a **high-confidence guardrail, not a full SAST**. It cannot reason across modules or
+  about sanitizers; treat `passed` as "no known violation of the 110 rules", not a security proof.
 
 ## Detection coverage notes
 
@@ -261,7 +305,7 @@ Also: taint-analysis chain records keep worst-case fix correctness (see ③a).
 | ① **Context injection** | rule list + banned patterns + few-shot safe templates injected into the generation prompt |
 | ② **validation** | three engines, millisecond-scale (AST dangerous calls + regex blacklists + taint confirmations) |
 | ③ **automatic repair** | deterministic AST rewrites (random->secrets, md5->sha256, yaml.load->safe_load, hardcoded secrets->env) + LLM local rewrite; 3 rounds max |
-| ④ **logging** | JSONL with secret masking; assertions/government differences |
+| ④ **logging & iteration** | JSONL audit trail with secret masking; `cli.py missed` reports bypasses so rules improve |
 
 ## Tests
 
@@ -271,6 +315,40 @@ python cli.py selftest              # post-install self-test
 python tools/agent_e2e_check.py     # offline agent-toolchain E2E
 python tools/benchmark.py           # local benchmark (detection 1.0 / FPR 0.0 / ~0.16ms)
 ```
+
+## Why this over Semgrep / CodeQL
+
+| | Secure-Vibe | Semgrep / CodeQL |
+|---|---|---|
+| Timing | **at generation** (the model never emits the insecure line) | after writing, in CI |
+| Latency | ~0.16 ms/check — runs in the agent's inner loop | seconds to minutes |
+| Feedback to the AI | per-violation `fix_hint` + safe-equivalent templates that the generator can imitate | SARIF reports aimed at humans |
+| Operates | fully offline, zero API key, works inside any agent | requires server/CI integration |
+| Depth | line-level + Python taint; 110 curated rules | interprocedural data flow, thousands of rules |
+
+They are complementary: Secure-Vibe keeps the agent honest while it types; Semgrep/CodeQL is the safety net before merge.
+
+## Troubleshooting
+
+- **`python` not found on Linux/macOS** — use `python3`; the install script already probes `python3`/`python`/`py`.
+- **`cli.py` outputs mojibake in a Windows console** — `cli.py` forces UTF-8 on stdout; view via `> out.json` and open with UTF-8, or run inside the agent (which reads UTF-8 correctly).
+- **Windows Defender quarantines test/payload files** — when experimenting with malicious samples, store them under an excluded folder, or build payload strings at runtime (the repo tests do exactly this).
+- **GitHub unreachable (some networks)** — the git remote works over SSH (`git@github.com`); HTTPS is often what is blocked. `git push` via SSH is unaffected.
+- **An agent refuses to call the CLI** — prompt the agent with the one-line workflow from `SKILL.md`; ask it to run `cli.py selftest` first as proof it can.
+
+## Contributing
+
+1. **Add a rule** — one YAML item (see above), no code changes; a test case in `tests/` keeps the CI green.
+2. **Report a missed detection** — run `python cli.py missed --pattern "<snippet>" --note "<why it's dangerous>"`; after review it is promoted into `rules/`.
+3. **Code changes** — open a PR; CI runs `pytest` on Python 3.10/3.11/3.12. Tests are mandatory (225 and counting).
+4. Security issues: see [SECURITY.md](SECURITY.md).
+
+## Roadmap
+
+- Rust / Ruby / Swift rule sets
+- Multi-file & inter-module taint (moving past one code block)
+- Node/Java-specific AST engines (today `java`/`js` run on the regex engine)
+- Sanitizer modeling to cut known false positives
 
 ## Known limits
 
