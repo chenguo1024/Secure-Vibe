@@ -3,10 +3,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 py = sys.executable
-tmp = os.environ["TEMP"] + os.sep
+tmp = tempfile.mkdtemp(prefix="secure-vibe-e2e-") + os.sep
 
 # Agent step 2: generate code (deliberately flawed)
 v1 = tmp + "agent_v1.py"
